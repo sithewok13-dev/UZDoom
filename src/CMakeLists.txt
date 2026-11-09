@@ -1538,7 +1538,7 @@ if( DOOM_IOS )
 	# What SDL2, OpenAL Soft, MoltenVK's loader and the overlay need on iOS
 	set( IOS_FRAMEWORKS UIKit Foundation OpenGLES QuartzCore CoreGraphics CoreFoundation
 		AVFoundation AudioToolbox CoreAudio CoreMotion GameController Metal CoreHaptics CoreBluetooth
-		UserNotifications )
+		UserNotifications CoreText )
 	foreach( fw ${IOS_FRAMEWORKS} )
 		target_link_libraries( zdoom "-framework ${fw}" )
 	endforeach()
