@@ -34,6 +34,10 @@
 #include "am_map.h"
 #include "i_interface.h"
 
+#ifdef DOOM_TOUCH
+#include "../ios/IOSGame.h" // Added (iOS touch): the iOS touch controls
+#endif
+
 extern gamestate_t wipegamestate;
 extern uint8_t globalfreeze, globalchangefreeze;
 
@@ -114,7 +118,14 @@ bool P_CheckTickerPaused ()
 	if ( !netgame
 		 && gamestate != GS_TITLELEVEL
 		 && ((menuactive != MENU_Off && menuactive != MENU_OnNoPause && menuactive != MENU_GameplayMenu) ||
-			 ConsoleState == c_down || ConsoleState == c_falling)
+			 ConsoleState == c_down || ConsoleState == c_falling
+#ifdef DOOM_TOUCH
+			 // Added (iOS touch): the game holds still while the touch controls'
+			 // weapon wheel or level list is open (as under the menu: no "Paused",
+			 // game sounds pause, the music plays on)
+			 || IOSGame_HoldsGame()
+#endif
+			 )
 		 && !demoplayback
 		 && !demorecording
 		 && players[consoleplayer].viewz != NO_VALUE

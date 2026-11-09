@@ -1527,9 +1527,17 @@ if( DEM_CMAKE_COMPILER_IS_GNUCXX_COMPATIBLE )
 endif()
 
 if( DOOM_TOUCH )
-	# The touch controls' game side (ios/IOSGame.cpp); the overlay itself
-	# (ios/IOSTouch.m) comes with the touch controls
+	# The touch controls: the overlay (on iOS, Objective-C with ARC; in the
+	# Linux rig, its plain C core through the rig's file) and the game side
 	set( TOUCH_SOURCES ../ios/IOSGame.cpp )
+	if( DOOM_IOS )
+		list( APPEND TOUCH_SOURCES ../ios/IOSTouch.m )
+		# (built as Objective-C by the C compiler, clang)
+		set_source_files_properties( ../ios/IOSTouch.m PROPERTIES COMPILE_FLAGS "-x objective-c -fobjc-arc" )
+	else()
+		list( APPEND TOUCH_SOURCES ${DOOM_TOUCH_RIG_SOURCE} )
+		set_source_files_properties( ${DOOM_TOUCH_RIG_SOURCE} PROPERTIES COMPILE_FLAGS "-DIOSTOUCH_RIG -I${CMAKE_SOURCE_DIR}/ios" )
+	endif()
 	target_sources( zdoom PRIVATE ${TOUCH_SOURCES} )
 	set_source_files_properties( ${TOUCH_SOURCES} PROPERTIES SKIP_PRECOMPILE_HEADERS TRUE )
 endif()

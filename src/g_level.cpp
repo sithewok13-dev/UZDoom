@@ -90,6 +90,10 @@
 
 #include "texturemanager.h"
 
+#ifdef DOOM_TOUCH
+#include "../ios/IOSGame.h" // Added (iOS touch): the iOS touch controls
+#endif
+
 void STAT_StartNewGame(const char *lev);
 void STAT_ChangeLevel(const char *newl, FLevelLocals *Level);
 FString STAT_EpisodeName();
@@ -1384,6 +1388,9 @@ void G_DoLoadLevel(const FString &nextmapname, int position, bool autosave, bool
 	C_FlushDisplay();
 	P_ResetSightCounters(true);
 	I_UpdateWindowTitle();
+#ifdef DOOM_TOUCH
+	IOSGame_LevelStarted(); // Added (iOS touch): a new level, a restart or a load
+#endif
 }
 
 void FLevelLocals::DoLoadLevel(const FString &nextmapname, int position, bool autosave, bool newGame)

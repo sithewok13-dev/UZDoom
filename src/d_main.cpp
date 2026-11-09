@@ -123,6 +123,10 @@
 #include "i_system.h"  // for SHARE_DIR
 #endif // __unix__
 
+#ifdef DOOM_TOUCH
+#include "../ios/IOSGame.h" // Added (iOS touch): the iOS touch controls
+#endif
+
 using namespace FileSys;
 
 EXTERN_CVAR(Bool, hud_althud)
@@ -1624,6 +1628,9 @@ void D_DoomLoop ()
 			// Update display, next frame, with current state.
 			I_StartTic ();
 			D_ProcessEvents();
+#ifdef DOOM_TOUCH
+			IOSGame_Frame(); // Added (iOS touch): the touch controls (after the frame's touches came in)
+#endif
 			D_Display ();
 			S_UpdateMusic();
 

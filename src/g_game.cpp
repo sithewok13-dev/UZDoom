@@ -82,6 +82,10 @@
 #include "vm.h"
 #include "wi_stuff.h"
 
+#ifdef DOOM_TOUCH
+#include "../ios/IOSGame.h" // Added (iOS touch): the iOS touch controls
+#endif
+
 // MACROS ------------------------------------------------------------------
 
 #define MAXPLMOVE        (forwardmove[1])
@@ -691,6 +695,12 @@ void G_BuildTiccmd (usercmd_t *cmd)
 	axis_forward = buttonMap.ButtonAnalog(Button_Forward) - buttonMap.ButtonAnalog(Button_Back);
 	axis_side = buttonMap.ButtonAnalog(Button_MoveLeft) - buttonMap.ButtonAnalog(Button_MoveRight);
 	axis_up = buttonMap.ButtonAnalog(Button_MoveUp) - buttonMap.ButtonAnalog(Button_MoveDown);
+
+#ifdef DOOM_TOUCH
+	// Added (iOS touch): the touch controls' stick (as a joystick's axes), their
+	// buttons, NEXT WPN / PREV WPN and the weapon wheel's pick
+	IOSGame_Ticcmd(&axis_forward, &axis_side, &cmd->buttons);
+#endif
 
 	bool ignore_yaw = false;
 	bool ignore_pitch = false;
