@@ -239,7 +239,8 @@ FGameConfigFile::FGameConfigFile ()
 	// address at each update or reinstall, so saved full paths go stale:
 	// the search paths are made afresh at every launch.
 	{
-		FString docs = user_docs;
+		FString docs, user_app_support, local_app_support;
+		M_GetMacSearchDirectories(docs, user_app_support, local_app_support);
 		docs.Truncate(docs.Len() - strlen("/" GAME_DIR));
 		SetSection ("IWADSearch.Directories", true);
 		ClearCurrentSection();
