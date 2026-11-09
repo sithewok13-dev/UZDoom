@@ -859,6 +859,11 @@ int FIWadManager::IdentifyVersion (std::vector<FileSys::ResourceName>&wadfiles, 
 	// Present the IWAD selection box.
 	bool showlauncher = Args->CheckParm(FArg_showlauncher);
 	bool alwaysshow = (queryiwad && !Args->CheckParm(FArg_iwad) && !foundprio) || showlauncher;
+#ifdef DOOM_IOS
+	// Added (iOS): the picker always shows, with one game too (its add-ons
+	// are picked there), whatever "always show IWAD selection" says
+	alwaysshow = true;
+#endif
 
 	if (!havepicked && (alwaysshow || picks.Size() > 1))
 	{

@@ -354,28 +354,6 @@ class Menu : Object native ui version("2.4")
 
 		int w = Screen.GetWidth();
 		int h = Screen.GetHeight();
-		if (BackbuttonAlways)
-		{
-			if (self == GetCurrentMenu() && BackbuttonShows())
-			{
-				int x, y, w, h;
-				BackbuttonBox(x, y, w, h);
-				bool lit = mBackbuttonSelected && mMouseCapture;
-				screen.Dim(lit ? Color(255, 120, 90, 20) : Color(255, 0, 0, 0), lit ? 0.85 : 0.6, x, y, w, h);
-				int b = max(h / 24, 1);	// (a thin gold frame)
-				Color gold = Color(255, 230, 180, 60);
-				screen.Dim(gold, 0.9, x, y, w, b);
-				screen.Dim(gold, 0.9, x, y + h - b, w, b);
-				screen.Dim(gold, 0.9, x, y, b, h);
-				screen.Dim(gold, 0.9, x + w - b, y, b, h);
-				String txt = "< BACK";
-				double scale = h * 0.5 / NewSmallFont.GetHeight();
-				double tw = NewSmallFont.StringWidth(txt) * scale;
-				screen.DrawText(NewSmallFont, Font.CR_GOLD, x + (w - tw) / 2, y + (h - NewSmallFont.GetHeight() * scale) / 2, txt,
-					DTA_ScaleX, scale, DTA_ScaleY, scale);
-			}
-			return;
-		}
 		double minratio = 0.4; // if this gets changed, change it in the menudef too
 		if (m_tooltip_capratio > minratio+double.equal_epsilon && double(w) / h > m_tooltip_capratio)
 		{
@@ -488,6 +466,31 @@ class Menu : Object native ui version("2.4")
 
 	virtual void Drawer ()
 	{
+		if (BackbuttonAlways)
+		{
+			if (self == GetCurrentMenu() && BackbuttonShows())
+			{
+				int x, y, w, h;
+				BackbuttonBox(x, y, w, h);
+				bool lit = mBackbuttonSelected && mMouseCapture;
+				screen.Dim(lit ? Color(255, 120, 90, 20) : Color(255, 0, 0, 0), lit ? 0.85 : 0.6, x, y, w, h);
+				int b = max(h / 24, 1);	// (a thin gold frame)
+				Color gold = Color(255, 230, 180, 60);
+				screen.Dim(gold, 0.9, x, y, w, b);
+				screen.Dim(gold, 0.9, x, y + h - b, w, b);
+				screen.Dim(gold, 0.9, x, y, b, h);
+				screen.Dim(gold, 0.9, x + w - b, y, b, h);
+				String txt = "< BACK";
+				double scale = h * 0.5 / NewSmallFont.GetHeight();
+				double tw = NewSmallFont.StringWidth(txt) * scale;
+				screen.DrawText(NewSmallFont, Font.CR_GOLD, x + (w - tw) / 2, y + (h - NewSmallFont.GetHeight() * scale) / 2, txt,
+					DTA_ScaleX, scale, DTA_ScaleY, scale);
+			}
+			// (UZDoom's tooltips still show)
+			if (self == GetCurrentMenu() && DrawTooltips)
+				DrawTooltip();
+			return;
+		}
 		if (self == GetCurrentMenu())
 		{
 			if (BackbuttonAlpha > 0 && m_show_backbutton >= 0 && m_use_mouse)

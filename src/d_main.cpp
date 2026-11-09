@@ -126,6 +126,9 @@
 #ifdef DOOM_TOUCH
 #include "../ios/IOSGame.h" // Added (iOS touch): the iOS touch controls
 #endif
+#ifdef DOOM_IOS
+extern "C" void IOS_FrameCap(void); // Added (iOS): ios/i_ios.mm
+#endif
 
 using namespace FileSys;
 
@@ -1630,6 +1633,9 @@ void D_DoomLoop ()
 			D_ProcessEvents();
 #ifdef DOOM_TOUCH
 			IOSGame_Frame(); // Added (iOS touch): the touch controls (after the frame's touches came in)
+#endif
+#ifdef DOOM_IOS
+			IOS_FrameCap(); // Added (iOS): the tray's FPS held at 60 keeps the frames 1/60 s apart
 #endif
 			D_Display ();
 			S_UpdateMusic();
@@ -3592,6 +3598,17 @@ static int D_InitGame(const FIWADInfo* iwad_info, std::vector<FileSys::ResourceN
 		V_InitScreen();
 	}
 	SavegameFolder = iwad_info->Autoname;
+#ifdef DOOM_IOS
+	// Added (iOS): an add-on picked in the game picker (loaded with -file)
+	// keeps its saves apart from its game's, so quick saves and quick loads
+	// never mix the two: e.g. doom.id.doom1.kex+sigil
+	for (auto& pwad : pwads)
+	{
+		FString base = ExtractFileBase(pwad.Name.c_str());
+		base.ToLower();
+		if (base.IsNotEmpty()) SavegameFolder << "+" << base;
+	}
+#endif
 	gameinfo.gametype = iwad_info->gametype;
 	gameinfo.flags = iwad_info->flags;
 	gameinfo.nokeyboardcheats = iwad_info->nokeyboardcheats;

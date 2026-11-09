@@ -11,6 +11,7 @@
 ** show UIKit and spin the main run loop until they are answered.
 */
 
+#define GLES_SILENCE_DEPRECATION 1 // (OpenGL ES is the fallback renderer; its diagnostics stay)
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <AVFoundation/AVFoundation.h>
@@ -205,7 +206,6 @@ __attribute__((constructor(101))) static void IOS_LogToFile()
 
 // Start-up diagnostics (called from SwapBuffers for the first frames): what
 // the GL frame buffer holds and which windows UIKit shows, into the log.
-#define GLES_SILENCE_DEPRECATION 1
 #include <OpenGLES/ES3/gl.h>
 #import <OpenGLES/EAGL.h>
 #include <vector>
@@ -237,6 +237,8 @@ extern "C" void IOS_FrameReport(int frame, int w, int h)
 	}
 	printf("Frame %d: drawable %dx%d, fb %d (status 0x%x), viewport %d,%d %dx%d, centre pixel %d,%d,%d, GL error 0x%x\n",
 		frame, w, h, (int)fb, status, vp[0], vp[1], vp[2], vp[3], px[0], px[1], px[2], err);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 	for (UIWindow* win in UIApplication.sharedApplication.windows)
 	{
 		printf("  window %s: %s%s%s level %.0f, %.0fx%.0f, root %s\n", class_getName(win.class),
@@ -244,6 +246,7 @@ extern "C" void IOS_FrameReport(int frame, int w, int h)
 			win.bounds.size.width, win.bounds.size.height,
 			win.rootViewController ? class_getName(win.rootViewController.class) : "none");
 	}
+#pragma clang diagnostic pop
 	fflush(stdout);
 }
 
@@ -310,6 +313,29 @@ static uint64_t IOS_Ns()
 	return clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
 }
 static uint64_t iosPresentNs = 0;
+
+// The tray's FPS held at 60 on a 120 Hz screen: the screen is asked for 60,
+// but the game's frames would still come at the screen's 120 (vsync), so
+// they are kept at most 1/60 s apart here (the waits save battery). (From
+// the Raze port.)
+extern "C" int IOSTouch_MaxFps(void);
+extern "C" void IOS_FrameCap(void)
+{
+	static uint64_t next = 0;
+	const int fps = IOSTouch_MaxFps();
+	if (fps <= 0 || fps >= 120) { next = 0; return; }
+	const uint64_t period = 1000000000ull / (uint64_t)fps;
+	uint64_t now = IOS_Ns();
+	// (far behind, after a pause or a load: from now on)
+	if (next == 0 || now > next + period) next = now;
+	if (now < next)
+	{
+		const uint64_t wait = next - now;
+		struct timespec ts = { (time_t)(wait / 1000000000ull), (long)(wait % 1000000000ull) };
+		nanosleep(&ts, nullptr);
+	}
+	next += period;
+}
 
 // The frame's hand-over to the screen, done here instead of SDL's swap so
 // that failures show in the log: SDL's colour renderbuffer, its size and

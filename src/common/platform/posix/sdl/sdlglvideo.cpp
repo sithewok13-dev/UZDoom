@@ -693,12 +693,19 @@ void SystemGLFrameBuffer::SwapBuffers()
 #ifdef DOOM_IOS
 // The app in front or not (home screen, app switcher, lock), from iOS's own
 // app state (i_input.cpp)
+#ifdef DOOM_TOUCH
+extern "C" void IOSTouch_Hide(void); // ios/IOSTouch.m
+#endif
 void IOS_SetAppActive(bool active)
 {
 	extern bool AppActive;
 	Printf("App %s\n", active ? "in front" : "in the background");
 	S_SetSoundPaused(active ? 1 : 0);
 	AppActive = active;
+#ifdef DOOM_TOUCH
+	// (the touch controls hide at once and tilt aiming's motion stops)
+	if (!active) IOSTouch_Hide();
+#endif
 }
 #endif
 

@@ -336,6 +336,11 @@ bool HoldingQueryKey(const char* key)
 
 bool I_PickIWad (bool showwin, FStartupSelectionInfo& info)
 {
+#ifdef DOOM_IOS
+	// Added (iOS): the picker always shows (it is the only way to another
+	// game or an add-on: there is no key to hold for it)
+	showwin = true;
+#endif
 	if (!showwin)
 	{
 		return true;
@@ -417,7 +422,7 @@ void I_OpenShellFolder(const char* infolder)
 {
 #ifdef DOOM_IOS
 	// iOS: no shell; the folders are in the Files app
-	Printf("The folder is in Files > On My iPhone > Raze: %s\n", infolder);
+	Printf("The folder is in Files > On My iPhone > DOOM: %s\n", infolder);
 #else
 	char* curdir = getcwd(NULL,0);
 

@@ -63,6 +63,10 @@ extern int chatmodeon;
 // loading)
 static int TouchMode()
 {
+	// (the app in the background: nothing, so the weapon wheel or the level
+	// list closes, picking nothing, and the game isn't held when it's back)
+	extern bool AppActive;
+	if (!AppActive) return IOSTOUCH_HIDDEN;
 	if (gamestate != GS_LEVEL || menuactive != MENU_Off || demoplayback || gameaction != ga_nothing) return IOSTOUCH_HIDDEN;
 	if (ConsoleState == c_down || ConsoleState == c_falling) return IOSTOUCH_CONSOLE;
 	if (chatmodeon) return IOSTOUCH_HIDDEN;
