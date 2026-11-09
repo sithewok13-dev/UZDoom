@@ -58,5 +58,11 @@ set(enable-wasapi OFF CACHE BOOL "" FORCE)
 set(enable-waveout OFF CACHE BOOL "" FORCE)
 set(enable-winmidi OFF CACHE BOOL "" FORCE)
 set(osal "cpp11" CACHE STRING "" FORCE)
+# (Added: iOS makes every program an app bundle, which fluidsynth's own
+# command-line program can't be installed as: it isn't built for the game
+# anyway, so it is left a plain program)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+	set(CMAKE_MACOSX_BUNDLE OFF)
+endif()
 add_subdirectory(fluidsynth EXCLUDE_FROM_ALL)
 set_property(TARGET fluidsynth PROPERTY ENABLE_EXPORTS ON)
