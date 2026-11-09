@@ -31,6 +31,8 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
+    outputs:
+      build_date: ${{ steps.stamp.outputs.date }}
     steps:
     - uses: actions/checkout@v4
       with:
@@ -110,6 +112,12 @@ jobs:
         grep -E "(ios/).*warning:" build.log | sort -u | head -60 || true
         tail -3 build.log
 
+    # The build stamp (the run number and the UTC date), shown under the
+    # open MENU tray as "build 80 · Nov 9" and on the release's first line
+    - name: Build stamp
+      id: stamp
+      run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
     - name: Package .ipa
       run: |
         set -e
@@ -117,7 +125,14 @@ jobs:
         echo "App bundle: $APP"
         ls -la "$APP"
         test -f "$APP/uzdoom.pk3"
-        plutil -lint "$APP/Info.plist"
+        PL="$APP/Info.plist"
+        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$PL"
+        /usr/libexec/PlistBuddy -c "Delete :SWBuildNumber" "$PL" 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c "Delete :SWBuildDate" "$PL" 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c "Add :SWBuildNumber string ${{ github.run_number }}" "$PL"
+        /usr/libexec/PlistBuddy -c "Add :SWBuildDate string ${{ steps.stamp.outputs.date }}" "$PL"
+        plutil -lint "$PL"
+        plutil -p "$PL" | grep -E "CFBundle(Short)?Version|SWBuild"
         curl -sSfL -o mvk.tar "https://github.com/KhronosGroup/MoltenVK/releases/download/$MOLTENVK_TAG/MoltenVK-ios.tar"
         tar xf mvk.tar
         mkdir -p "$APP/Frameworks"
@@ -161,6 +176,7 @@ jobs:
         prerelease: true
         make_latest: false
         body: |
+          Build ${{ github.run_number }} · ${{ needs.build.outputs.build_date }}
           Development build of DOOM (UZDoom) for iPhone and iPad, rebuilt after every push to the `ios` branch (run ${{ github.run_number }}, commit ${{ github.sha }}). It may not have been tried yet.
           DOOM.ipa is unsigned: sideload it, then copy your own .wad files (doom.wad, doom2.wad, tnt.wad, plutonia.wad and any add-ons) into Files > On My iPhone > DOOM. No game data is included.
         files: out/DOOM.ipa
