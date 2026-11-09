@@ -1415,7 +1415,9 @@ include_directories(
 set_target_properties( zdoom PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${ZDOOM_OUTPUT_DIR} )
 set_target_properties( zdoom PROPERTIES OUTPUT_NAME ${ZDOOM_EXE_NAME} )
 
-if(NOT MINGW AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+# (Added: not with Apple's linker, which has no -z; the Mac build sets its
+# own LINK_FLAGS further down, iOS none)
+if(NOT MINGW AND NOT APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 	set_target_properties(zdoom PROPERTIES LINK_FLAGS "-z nostart-stop-gc")
 endif()
 
