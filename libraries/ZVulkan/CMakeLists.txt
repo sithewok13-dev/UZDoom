@@ -194,7 +194,11 @@ if(WIN32)
 	list(APPEND ZVULKAN_SOURCES ${ZVULKAN_WIN32_SOURCES})
 	add_definitions(-DUNICODE -D_UNICODE)
 else()
-	if(APPLE)
+	if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+		# (Added: iOS: MoltenVK is loaded from the app's Frameworks at run
+		# time and volk gets its vkGetInstanceProcAddr from SDL; the headers
+		# are ZVulkan's own)
+	elseif(APPLE)
 		find_package(Vulkan REQUIRED COMPONENTS MoltenVK)
 		list(APPEND ZVULKAN_LIBS Vulkan::Vulkan)
 	elseif(NOT HAIKU AND NOT CMAKE_SYSTEM_NAME MATCHES "FreeBSD|NetBSD|OpenBSD|DragonFly")

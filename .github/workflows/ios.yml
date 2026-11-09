@@ -80,6 +80,9 @@ jobs:
       run: |
         set -e
         DEPS=$PWD/deps
+        # Homebrew's pkg-config would hand the iOS build Mac libraries (WebP:
+        # the game's own copy is built instead): hide them
+        export PKG_CONFIG_LIBDIR=/nonexistent PKG_CONFIG_PATH=
         cmake -S . -B build -G Ninja \
           -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64 \
           -DCMAKE_OSX_DEPLOYMENT_TARGET=$IOS_MIN -DCMAKE_BUILD_TYPE=Release \
@@ -91,7 +94,8 @@ jobs:
           -DSNDFILE_INCLUDE_DIR=$DEPS/include -DSNDFILE_LIBRARY=$DEPS/lib/libsndfile.a \
           "-DIOS_SNDFILE_CODECS=$DEPS/lib/libvorbisenc.a;$DEPS/lib/libvorbis.a;$DEPS/lib/libFLAC.a;$DEPS/lib/libopus.a;$DEPS/lib/libogg.a" \
           -DVPX_INCLUDE_DIR=$DEPS/include -DVPX_LIBRARIES=$DEPS/lib/libvpx.a \
-          -DNO_GTK=ON -DFORCE_NO_LTO=ON \
+          -DNO_GTK=ON -DFORCE_NO_LTO=ON -DFORCE_INTERNAL_WEBP=ON \
+          "-DCMAKE_IGNORE_PREFIX_PATH=/opt/homebrew;/usr/local" \
           -DDOOM_IOS_VERSION=0.1.${{ github.run_number }}
 
     - name: Build
