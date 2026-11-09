@@ -121,7 +121,7 @@ namespace OpenGLESRenderer
 		glBindTexture(GL_TEXTURE_2D, textureBinding);
 		glActiveTexture(activeTex);
 		glBindRenderbuffer(GL_RENDERBUFFER, 0);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, gles.defaultFramebuffer);
 
 		if (FailedCreate)
 		{
@@ -414,7 +414,7 @@ namespace OpenGLESRenderer
 
 	void FGLRenderBuffers::BindOutputFB()
 	{
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, gles.defaultFramebuffer);
 	}
 
 	//==========================================================================

@@ -129,7 +129,7 @@ unsigned int FHardwareTexture::CreateTexture(unsigned char * buffer, int w, int 
 		else
 		{
 			sourcetype = GL_BGRA; // These two must be the same
-			texformat = GL_BGRA;
+			texformat = gles.bgraInternalRGBA ? GL_RGBA : GL_BGRA; // (except with Apple's BGRA extension: iOS)
 		}
 	}
 	else

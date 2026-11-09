@@ -43,7 +43,7 @@
 //GL headers
 #include "gl_load/gl_load.h"
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) && !defined(DOOM_IOS)
 	#include <OpenGL/OpenGL.h>
 #endif
 

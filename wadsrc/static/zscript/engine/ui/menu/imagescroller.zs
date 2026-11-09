@@ -225,7 +225,9 @@ class ImageScrollerMenu : Menu
 	override bool MouseEvent(int type, int x, int y)
 	{
 		// Todo: Implement some form of drag event to switch between pages.
-		if (type == MOUSE_Release)
+		// (Added: y < 0 is the touch screens' BACK button, see Menu.OnUIEvent:
+		// that tap goes back, it doesn't turn the page too)
+		if (type == MOUSE_Release && y >= 0)
 		{
 			return MenuEvent(MKEY_Enter, false);
 		}
@@ -275,5 +277,7 @@ class ImageScrollerMenu : Menu
 			Animated = wasAnimated;
 		}
 		current.Drawer(false);
+		// (Added: the touch screens' BACK button on these pages too)
+		if (BackbuttonAlways) Super.Drawer();
 	}
 }

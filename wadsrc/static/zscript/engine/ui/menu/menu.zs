@@ -239,8 +239,41 @@ class Menu : Object native ui version("2.4")
 	//
 	//=============================================================================
 
+	// Added: on a touch screen BACK shows on every menu but the first one
+	// before a game (where it would have nowhere to go)
+	protected bool BackbuttonShows()
+	{
+		return !BackbuttonAlways || mParentMenu != null || gamestate == GS_LEVEL;
+	}
+
+	// Added: the touch screens' BACK button (pixels): a box with "BACK" in
+	// it at the menu's top left, clear of the screen's corners and a notch
+	// (BackbuttonX/Y), about a finger high
+	protected void BackbuttonBox(out int x, out int y, out int w, out int h)
+	{
+		h = max(screen.GetHeight() * 10 / 100, 24);
+		w = h * 5 / 2;
+		x = BackbuttonX;
+		y = BackbuttonY;
+	}
+
 	protected bool MouseEventBack(int type, int x, int y)
 	{
+		if (BackbuttonAlways)
+		{
+			if (!BackbuttonShows()) return false;
+			int bx, by, bw, bh;
+			BackbuttonBox(bx, by, bw, bh);
+			int pad = bh / 3;	// (a finger's width around it counts too)
+			mBackbuttonSelected = (x >= bx - pad && x < bx + bw + pad && y >= by - pad && y < by + bh + pad);
+			if (mBackbuttonSelected && type == MOUSE_Release)
+			{
+				mBackbuttonSelected = false;
+				MenuEvent(MKEY_Back, true);
+				return true;
+			}
+			return mBackbuttonSelected;
+		}
 		if (m_show_backbutton >= 0)
 		{
 			let tex = TexMan.CheckForTexture(gameinfo.mBackButton, TexMan.Type_MiscPatch);
@@ -321,6 +354,28 @@ class Menu : Object native ui version("2.4")
 
 		int w = Screen.GetWidth();
 		int h = Screen.GetHeight();
+		if (BackbuttonAlways)
+		{
+			if (self == GetCurrentMenu() && BackbuttonShows())
+			{
+				int x, y, w, h;
+				BackbuttonBox(x, y, w, h);
+				bool lit = mBackbuttonSelected && mMouseCapture;
+				screen.Dim(lit ? Color(255, 120, 90, 20) : Color(255, 0, 0, 0), lit ? 0.85 : 0.6, x, y, w, h);
+				int b = max(h / 24, 1);	// (a thin gold frame)
+				Color gold = Color(255, 230, 180, 60);
+				screen.Dim(gold, 0.9, x, y, w, b);
+				screen.Dim(gold, 0.9, x, y + h - b, w, b);
+				screen.Dim(gold, 0.9, x, y, b, h);
+				screen.Dim(gold, 0.9, x + w - b, y, b, h);
+				String txt = "< BACK";
+				double scale = h * 0.5 / NewSmallFont.GetHeight();
+				double tw = NewSmallFont.StringWidth(txt) * scale;
+				screen.DrawText(NewSmallFont, Font.CR_GOLD, x + (w - tw) / 2, y + (h - NewSmallFont.GetHeight() * scale) / 2, txt,
+					DTA_ScaleX, scale, DTA_ScaleY, scale);
+			}
+			return;
+		}
 		double minratio = 0.4; // if this gets changed, change it in the menudef too
 		if (m_tooltip_capratio > minratio+double.equal_epsilon && double(w) / h > m_tooltip_capratio)
 		{

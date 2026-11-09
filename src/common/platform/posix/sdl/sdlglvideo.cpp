@@ -79,7 +79,11 @@ CUSTOM_CVAR(Bool, gl_debug, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINI
 {
 	Printf("This won't take effect until " GAMENAME " is restarted.\n");
 }
+#ifdef DOOM_IOS
+CUSTOM_CVAR(Bool, gl_es, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+#else
 CUSTOM_CVAR(Bool, gl_es, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+#endif
 {
 	Printf("This won't take effect until " GAMENAME " is restarted.\n");
 }
@@ -100,6 +104,10 @@ CCMD(vid_list_sdl_render_drivers)
 }
 
 // PRIVATE DATA DEFINITIONS ------------------------------------------------
+
+#ifdef DOOM_IOS
+void IOS_AttachWindowToScene(SDL_Window* window); // ios/i_ios.mm
+#endif
 
 namespace Priv
 {
@@ -160,9 +168,22 @@ namespace Priv
 		FString caption;
 		caption.Format(GAMENAME " %s (%s)", GetVersionString(), GetGitTime());
 
+#ifdef DOOM_IOS
+		// iOS: always the whole screen, at the screen's full resolution
+		// iOS: the whole screen at the screen's full resolution (the frames
+		// are handed over in ios/i_ios.mm: with SDL's swap, nothing after the
+		// first frames reached the screen)
+		const uint32_t windowFlags = SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALLOW_HIGHDPI | (extraFlags & ~SDL_WINDOW_FULLSCREEN_DESKTOP);
+#else
 		const uint32_t windowFlags = (win_maximized ? SDL_WINDOW_MAXIMIZED : 0) | SDL_WINDOW_RESIZABLE | extraFlags;
+#endif
 		Priv::window = SDL_CreateWindow(caption.GetChars(), xWindowPos, yWindowPos, win_w, win_h, windowFlags);
 
+#ifdef DOOM_IOS
+		// iOS: SDL 2 makes its window without a scene, which new iOS versions
+		// never show: put it in the app's scene and bring it to the front
+		if (Priv::window != nullptr) ::IOS_AttachWindowToScene(Priv::window);
+#endif
 		if (Priv::window != nullptr)
 		{
 			SDL_version sdlver;
@@ -203,7 +224,14 @@ namespace Priv
 		if (gl_es)
 		{
 			SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+#if defined(DOOM_IOS) || defined(DOOM_GLES_RIG)
+			// iOS and the Linux rig: an ES 3.0 context (on iOS the renderer
+			// drew nothing with ES 2; with ES 3 it draws, and the screen shows
+			// it at point resolution, see CreateWindow)
+			SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+#else
 			SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+#endif
 			SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 		}
 		else if (glver[0] > 2)
@@ -319,6 +347,20 @@ bool I_CreateVulkanSurface(VkInstance instance, VkSurfaceKHR *surface)
 #endif
 
 
+#if defined(DOOM_IOS) || defined(DOOM_TOUCH)
+// Added: the game's window, whichever renderer draws in it (the touch
+// controls and the input need it; with Vulkan there is no current GL window)
+SDL_Window* IOS_GetGameWindow()
+{
+	return Priv::window;
+}
+#endif
+
+#ifdef DOOM_IOS
+// Added (iOS): MoltenVK, loaded from the app (ios/i_ios.mm)
+extern "C" bool IOS_LoadVulkan();
+#endif
+
 SDLVideo::SDLVideo ()
 {
 	if (SDL_Init(SDL_INIT_VIDEO) < 0)
@@ -335,6 +377,10 @@ SDLVideo::SDLVideo ()
 
 #ifdef HAVE_VULKAN
 	Priv::vulkanEnabled = vid_preferbackend == BACKEND_VULKAN;
+#ifdef DOOM_IOS
+	// iOS: MoltenVK, from the app's Frameworks folder (OpenGL ES without it)
+	if (Priv::vulkanEnabled && !IOS_LoadVulkan()) Priv::vulkanEnabled = false;
+#endif
 
 	if (Priv::vulkanEnabled)
 	{
@@ -605,7 +651,7 @@ int SystemGLFrameBuffer::GetClientHeight()
 
 void SystemGLFrameBuffer::SetVSync( bool vsync )
 {
-#if defined (__APPLE__)
+#if defined (__APPLE__) && !defined (DOOM_IOS)
 	const GLint value = vsync ? 1 : 0;
 	CGLSetParameter( CGLGetCurrentContext(), kCGLCPSwapInterval, &value );
 #else
@@ -621,11 +667,40 @@ void SystemGLFrameBuffer::SetVSync( bool vsync )
 #endif
 }
 
+#ifdef DOOM_IOS
+extern "C" void IOS_FrameReport(int frame, int w, int h); // ios/i_ios.mm: start-up diagnostics in the log
+extern "C" void IOS_Present(SDL_Window* window, int frame); // ios/i_ios.mm: hands the frame to the screen
+#endif
+
 void SystemGLFrameBuffer::SwapBuffers()
 {
+#ifdef DOOM_IOS
+	static int frame = 0;
+	if (frame == 0)
+	{
+		int w = 0, h = 0;
+		SDL_GL_GetDrawableSize(Priv::window, &w, &h);
+		IOS_FrameReport(frame, w, h);
+	}
+	IOS_Present(Priv::window, frame); // SDL's swap, with its outcome logged
+	frame++;
+#else
 	SDL_GL_SwapWindow(Priv::window);
+#endif
 }
 
+
+#ifdef DOOM_IOS
+// The app in front or not (home screen, app switcher, lock), from iOS's own
+// app state (i_input.cpp)
+void IOS_SetAppActive(bool active)
+{
+	extern bool AppActive;
+	Printf("App %s\n", active ? "in front" : "in the background");
+	S_SetSoundPaused(active ? 1 : 0);
+	AppActive = active;
+}
+#endif
 
 void ProcessSDLWindowEvent(const SDL_WindowEvent &event)
 {
@@ -633,6 +708,13 @@ void ProcessSDLWindowEvent(const SDL_WindowEvent &event)
 	{
 	extern bool AppActive;
 
+#ifdef DOOM_IOS
+	// iOS: window focus comes and goes without the app leaving the front
+	// (it froze the menus until a swipe); IOS_SetAppActive decides instead
+	case SDL_WINDOWEVENT_FOCUS_GAINED:
+	case SDL_WINDOWEVENT_FOCUS_LOST:
+		break;
+#else
 	case SDL_WINDOWEVENT_FOCUS_GAINED:
 		S_SetSoundPaused(1);
 		AppActive = true;
@@ -642,6 +724,7 @@ void ProcessSDLWindowEvent(const SDL_WindowEvent &event)
 		S_SetSoundPaused(0);
 		AppActive = false;
 		break;
+#endif
 
 	case SDL_WINDOWEVENT_MOVED:
 		if (!vid_fullscreen)

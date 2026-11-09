@@ -1,0 +1,162 @@
+# Builds an unsigned DOOM.ipa (UZDoom for iPhone and iPad): DOOM, DOOM II,
+# Final DOOM and the re-release's add-ons, with touch controls. Sideload it,
+# then copy your own .wad files into Files > On My iPhone > DOOM. No game
+# data is in the app.
+#
+# Every run keeps the .ipa as a workflow artifact. Builds of the ios branch
+# also update the public "ios-latest" prerelease (DOOM.ipa, no game data);
+# runs on other ios-* branches (work in progress) publish nothing.
+# (Modelled on the owner's Raze port, .github/workflows/ios.yml.)
+name: iOS
+
+on:
+  push:
+    branches: [ "ios", "ios-*" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IOS_MIN: "15.0"
+  SDL_TAG: release-2.32.8
+  OPENAL_TAG: 1.24.3
+  VPX_TAG: v1.15.2
+  MOLTENVK_TAG: v1.4.2
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+
+    - name: Select newest Xcode
+      run: |
+        set -e
+        XCODE=$(ls -d /Applications/Xcode_*.app | grep -iv beta | sort -V | tail -1)
+        echo "Using $XCODE"
+        sudo xcode-select -s "$XCODE/Contents/Developer"
+        xcodebuild -version
+        xcrun --sdk iphoneos --show-sdk-version
+
+    - name: Host tools
+      run: brew install ninja libvpx
+
+    - name: Restore iOS dependencies
+      id: deps
+      uses: actions/cache/restore@v4
+      with:
+        path: deps
+        key: ios-deps-${{ env.SDL_TAG }}-${{ env.OPENAL_TAG }}-${{ env.VPX_TAG }}-${{ env.IOS_MIN }}-${{ hashFiles('ios/build_deps.sh') }}
+
+    - name: Build SDL2, OpenAL Soft, libsndfile and libvpx for iOS
+      if: steps.deps.outputs.cache-hit != 'true'
+      run: ios/build_deps.sh "$PWD/deps"
+
+    - name: Save iOS dependencies
+      if: steps.deps.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: deps
+        key: ${{ steps.deps.outputs.cache-primary-key }}
+
+    - name: Build host tools
+      run: |
+        set -e
+        cmake -S . -B host -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          -DHAVE_VULKAN=OFF -DHAVE_GLES2=OFF -DOSX_COCOA_BACKEND=ON -DNO_OPENAL=ON \
+          -DVPX_INCLUDE_DIR=$(brew --prefix libvpx)/include -DVPX_LIBRARIES=$(brew --prefix libvpx)/lib/libvpx.dylib \
+          > host-configure.log 2>&1 || { tail -60 host-configure.log; exit 1; }
+        cmake --build host --target zipdir lemon re2c
+        test -f host/ImportExecutables.cmake
+
+    - name: Configure
+      run: |
+        set -e
+        DEPS=$PWD/deps
+        cmake -S . -B build -G Ninja \
+          -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64 \
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=$IOS_MIN -DCMAKE_BUILD_TYPE=Release \
+          -DIMPORT_EXECUTABLES=$PWD/host/ImportExecutables.cmake \
+          -DSDL2_INCLUDE_DIR=$DEPS/include/SDL2 \
+          "-DSDL2_LIBRARY=$DEPS/lib/libSDL2main.a;$DEPS/lib/libSDL2.a" \
+          -DOPENAL_INCLUDE_DIR=$DEPS/include/AL \
+          -DOPENAL_LIBRARY=$DEPS/lib/libopenal.a \
+          -DSNDFILE_INCLUDE_DIR=$DEPS/include -DSNDFILE_LIBRARY=$DEPS/lib/libsndfile.a \
+          "-DIOS_SNDFILE_CODECS=$DEPS/lib/libvorbisenc.a;$DEPS/lib/libvorbis.a;$DEPS/lib/libFLAC.a;$DEPS/lib/libopus.a;$DEPS/lib/libogg.a" \
+          -DVPX_INCLUDE_DIR=$DEPS/include -DVPX_LIBRARIES=$DEPS/lib/libvpx.a \
+          -DNO_GTK=ON -DFORCE_NO_LTO=ON \
+          -DDOOM_IOS_VERSION=0.1.${{ github.run_number }}
+
+    - name: Build
+      run: |
+        cmake --build build -- -k 0 > build.log 2>&1 || {
+          grep -E "error:|FAILED:|undefined symbol|ld: |CMake Error" build.log | head -120
+          echo "----- end of the build log -----"
+          tail -80 build.log | cut -c1-400
+          echo "::error::Build failed"
+          exit 1
+        }
+        grep -E "(ios/).*warning:" build.log | sort -u | head -60 || true
+        tail -3 build.log
+
+    - name: Package .ipa
+      run: |
+        set -e
+        APP=$(find build -maxdepth 3 -name "DOOM.app" -type d | head -1)
+        echo "App bundle: $APP"
+        ls -la "$APP"
+        test -f "$APP/uzdoom.pk3"
+        plutil -lint "$APP/Info.plist"
+        curl -sSfL -o mvk.tar "https://github.com/KhronosGroup/MoltenVK/releases/download/$MOLTENVK_TAG/MoltenVK-ios.tar"
+        tar xf mvk.tar
+        mkdir -p "$APP/Frameworks"
+        cp -R MoltenVK/MoltenVK/dynamic/MoltenVK.xcframework/ios-arm64/MoltenVK.framework "$APP/Frameworks/"
+        cp MoltenVK/LICENSE "$APP/Frameworks/MoltenVK.framework/LICENSE"
+        lipo -info "$APP/Frameworks/MoltenVK.framework/MoltenVK"
+        codesign --force --sign - --timestamp=none "$APP/Frameworks/MoltenVK.framework"
+        codesign --force --sign - --timestamp=none "$APP"
+        mkdir -p ipa/Payload
+        cp -R "$APP" ipa/Payload/
+        # No game data in the app: no .wad file may be in it
+        if find ipa/Payload -iname '*.wad' | grep -q .; then echo "::error::A .wad file is in the app"; exit 1; fi
+        (cd ipa && zip -qry ../DOOM.ipa Payload)
+        ls -la DOOM.ipa
+
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: DOOM-ios
+        path: DOOM.ipa
+
+  release:
+    name: Publish to "iOS latest" prerelease
+    needs: build
+    if: github.ref == 'refs/heads/ios'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: DOOM-ios
+        path: out
+
+    - name: Publish to "ios-latest" prerelease
+      uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+      with:
+        tag_name: ios-latest
+        target_commitish: ${{ github.sha }}
+        name: iOS latest build
+        prerelease: true
+        make_latest: false
+        body: |
+          Development build of DOOM (UZDoom) for iPhone and iPad, rebuilt after every push to the `ios` branch (run ${{ github.run_number }}, commit ${{ github.sha }}). It may not have been tried yet.
+          DOOM.ipa is unsigned: sideload it, then copy your own .wad files (doom.wad, doom2.wad, tnt.wad, plutonia.wad and any add-ons) into Files > On My iPhone > DOOM. No game data is included.
+        files: out/DOOM.ipa

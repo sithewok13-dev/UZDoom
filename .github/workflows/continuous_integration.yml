@@ -1,6 +1,10 @@
 name: Continuous Integration
 
-on: [push, pull_request]
+on:
+  push:
+    # (Added: the iOS branches build with ios.yml only)
+    branches-ignore: [ "ios", "ios-*" ]
+  pull_request:
 
 permissions:
   contents: write

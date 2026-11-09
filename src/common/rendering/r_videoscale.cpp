@@ -168,7 +168,13 @@ namespace
 }
 
 void R_ShowCurrentScaling();
+#ifdef DOOM_IOS
+// iOS: the screen is drawn at two thirds of its full resolution (the full
+// resolution is 9x the pixels of the point size and made the phone sluggish)
+CUSTOM_CVAR(Float, vid_scalefactor, 0.67f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+#else
 CUSTOM_CVAR(Float, vid_scalefactor, 1.0, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+#endif
 {
 	setsizeneeded = true;
 	if (self < 0.05 || self > 2.0)

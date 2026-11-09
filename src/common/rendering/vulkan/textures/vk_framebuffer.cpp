@@ -58,7 +58,13 @@ void VkFramebufferManager::AcquireImage()
 		CurrentHdr = vk_hdr;
 		CurrentExclusiveFullscreen = exclusiveFullscreen;
 
+#ifdef DOOM_IOS
+		// iOS: three images with vsync too, so a frame a little over a 120 Hz
+		// screen's 8.3 ms doesn't drop the game to 60
+		SwapChain->Create(CurrentWidth, CurrentHeight, 3, CurrentVSync, CurrentHdr, CurrentExclusiveFullscreen);
+#else
 		SwapChain->Create(CurrentWidth, CurrentHeight, CurrentVSync ? 2 : 3, CurrentVSync, CurrentHdr, CurrentExclusiveFullscreen);
+#endif
 
 		RenderFinishedSemaphores.clear();
 		for (int i = 0; i < SwapChain->ImageCount(); i++)

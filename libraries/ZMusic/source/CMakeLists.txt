@@ -109,7 +109,8 @@ if(WIN32)
 	target_compile_definitions(zmusic-obj INTERFACE HAVE_SYSTEM_MIDI)
 	target_link_libraries(zmusic-obj INTERFACE winmm)
 	target_sources(zmusic-obj INTERFACE mididevices/music_win_mididevice.cpp)
-elseif(APPLE)
+# (Added: iOS has no CoreAudio/HostTime.h, so no CoreMIDI device there)
+elseif(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
 	target_compile_definitions(zmusic-obj INTERFACE HAVE_SYSTEM_MIDI)
 	target_sources(zmusic-obj INTERFACE
 		mididevices/music_coremidi_mididevice.mm

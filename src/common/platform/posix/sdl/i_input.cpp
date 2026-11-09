@@ -31,6 +31,9 @@
 #include "c_buttons.h"
 #include "c_cvars.h"
 #include "d_eventbase.h"
+#ifdef HAVE_VULKAN
+#include <SDL_vulkan.h>
+#endif
 #include "d_gui.h"
 #include "dikeys.h"
 #include "engineerrors.h"
@@ -44,6 +47,7 @@
 #include "v_video.h"
 #include "version.h"
 
+#include "printf.h"
 bool GUICapture;
 static bool NativeMouse = true;
 
@@ -246,12 +250,16 @@ void I_SetMouseCapture()
 {
 	// Clear out any mouse movement.
 	SDL_GetRelativeMouseState (NULL, NULL);
+#ifndef DOOM_IOS
 	SDL_CaptureMouse (SDL_TRUE);
+#endif
 }
 
 void I_ReleaseMouseCapture()
 {
+#ifndef DOOM_IOS
 	SDL_CaptureMouse (SDL_FALSE);
+#endif
 }
 
 static void MouseRead ()
@@ -294,11 +302,138 @@ static void I_CheckNativeMouse ()
 }
 
 
+// iOS: SDL gives touch/mouse positions in points, while the game's screen
+// (a high-DPI drawable) is measured in pixels: scale them to pixels
+#if defined(DOOM_IOS) || defined(DOOM_TOUCH)
+// The window's drawable in pixels, whichever renderer draws it (with Vulkan,
+// SDL_GL_GetDrawableSize only gives the size in points)
+static void IOS_DrawableSize(SDL_Window* w, int* pw, int* ph)
+{
+	*pw = *ph = 0;
+	if (!w) return;
+#ifdef HAVE_VULKAN
+	if (SDL_GetWindowFlags(w) & SDL_WINDOW_VULKAN) SDL_Vulkan_GetDrawableSize(w, pw, ph);
+	else
+#endif
+	SDL_GL_GetDrawableSize(w, pw, ph);
+}
+
+// The game's window (with Vulkan there is no current GL window)
+SDL_Window* IOS_GetGameWindow(); // sdlglvideo.cpp
+static SDL_Window* IOS_GameWindow()
+{
+	SDL_Window* w = IOS_GetGameWindow();
+	if (!w) w = SDL_GL_GetCurrentWindow();
+	if (!w) w = SDL_GetKeyboardFocus();
+	if (!w) w = SDL_GetMouseFocus();
+	if (!w) w = SDL_GetWindowFromID(1);
+	return w;
+}
+#endif
+
+static void IOS_PointsToPixels(int16_t& x, int16_t& y)
+{
+#ifdef DOOM_IOS
+	SDL_Window* w = IOS_GameWindow();
+	int ww = 0, wh = 0, pw = 0, ph = 0;
+	if (w == nullptr) return;
+	SDL_GetWindowSize(w, &ww, &wh);
+	IOS_DrawableSize(w, &pw, &ph);
+	if (ww > 0 && wh > 0 && pw > 0 && ph > 0)
+	{
+		x = int16_t(x * pw / ww);
+		y = int16_t(y * ph / wh);
+	}
+#endif
+}
+
+#if defined(DOOM_IOS) || defined(DOOM_TOUCH)
+// Added: iOS menus (and anything else that takes the mouse as GUI events)
+// take a finger straight from SDL's finger events, not from SDL's
+// touch-to-mouse emulation: a press is the finger going down, and its
+// release always comes as that finger lifts or iOS takes it away (a system
+// gesture), at the finger, in the game screen's pixels. SDL's emulated
+// mouse buttons and motion from touches are ignored while the GUI takes
+// input; outside it (cutscenes: a tap skips) they work as before.
+static bool guiFingerDown = false;
+static SDL_FingerID guiFinger = 0;
+
+static void IOS_FingerToScreen(Uint32 windowID, float fx, float fy, int& x, int& y)
+{
+	// (0..1 of SDL's view: in the window's drawable pixels, which the
+	// screen's coordinates are scaled from, as the mouse's are)
+	int pw = 0, ph = 0;
+	SDL_Window* w = windowID ? SDL_GetWindowFromID(windowID) : nullptr;
+	if (!w) w = IOS_GameWindow();
+	if (w)
+	{
+		IOS_DrawableSize(w, &pw, &ph);
+		if (pw <= 0 || ph <= 0) SDL_GetWindowSize(w, &pw, &ph);
+	}
+	if (pw <= 0 || ph <= 0) { pw = screen->GetClientWidth(); ph = screen->GetClientHeight(); }
+	fx = fx < 0.f ? 0.f : (fx > 1.f ? 1.f : fx);
+	fy = fy < 0.f ? 0.f : (fy > 1.f ? 1.f : fy);
+	int16_t sx = int16_t(fx * (pw - 1)), sy = int16_t(fy * (ph - 1));
+	screen->ScaleCoordsFromWindow(sx, sy);
+	x = sx;
+	y = sy;
+}
+
+static void IOS_PostGuiFinger(int subtype, const SDL_TouchFingerEvent& f)
+{
+	event_t event = { 0,0,0,0,0,0,0 };
+	event.type = EV_GUI_Event;
+	event.subtype = subtype;
+	int x, y;
+	IOS_FingerToScreen(f.windowID, f.x, f.y, x, y);
+	event.data1 = x;
+	event.data2 = y;
+	D_PostEvent(&event);
+}
+
+static bool IOS_FingerEvent(const SDL_Event& sev)
+{
+	const SDL_TouchFingerEvent& f = sev.tfinger;
+	switch (sev.type)
+	{
+	case SDL_FINGERDOWN:
+		if (GUICapture && !guiFingerDown)
+		{
+			guiFingerDown = true;
+			guiFinger = f.fingerId;
+			IOS_PostGuiFinger(EV_GUI_MouseMove, f);
+			IOS_PostGuiFinger(EV_GUI_LButtonDown, f);
+		}
+		return true;
+	case SDL_FINGERMOTION:
+		if (guiFingerDown && f.fingerId == guiFinger && GUICapture) IOS_PostGuiFinger(EV_GUI_MouseMove, f);
+		return true;
+	case SDL_FINGERUP:
+		// (always, even if the menu went in between: a press never stays down)
+		if (guiFingerDown && f.fingerId == guiFinger)
+		{
+			guiFingerDown = false;
+			IOS_PostGuiFinger(EV_GUI_LButtonUp, f);
+		}
+		return true;
+	}
+	return false;
+}
+#endif
+
 void MessagePump (const SDL_Event &sev)
 {
 	static int lastx = 0, lasty = 0;
 	int x, y;
 	event_t event = { 0,0,0,0,0,0,0 };
+
+#if defined(DOOM_IOS) || defined(DOOM_TOUCH)
+	if (IOS_FingerEvent(sev)) return;
+	// (the emulated mouse from touches: the fingers above do the GUI's)
+	if (GUICapture && ((sev.type == SDL_MOUSEMOTION && sev.motion.which == SDL_TOUCH_MOUSEID)
+		|| ((sev.type == SDL_MOUSEBUTTONDOWN || sev.type == SDL_MOUSEBUTTONUP) && sev.button.which == SDL_TOUCH_MOUSEID)))
+		return;
+#endif
 
 	if (joykey_stop_conflict == -1 || joykey_stop_conflict == 1)
 	{
@@ -368,6 +503,27 @@ void MessagePump (const SDL_Event &sev)
 	case SDL_QUIT:
 		throw CExitEvent(0);
 
+#ifdef DOOM_IOS
+	// iOS: the app is "active" while it is in front, by the app's own state
+	// (home screen, app switcher, lock); the window focus events also come
+	// when nothing left the app and froze the menus (sdlglvideo.cpp)
+	// Only a real trip to the background stops the drawing: iOS also sends
+	// "will resign active" / "did become active" (SDL's WILLENTERBACKGROUND and
+	// DIDENTERFOREGROUND) while the app stays in front, e.g. on the owner's
+	// phone after taps in the menus, which froze them
+	case SDL_APP_WILLENTERBACKGROUND:
+	case SDL_APP_DIDENTERBACKGROUND:
+	case SDL_APP_WILLENTERFOREGROUND:
+	case SDL_APP_DIDENTERFOREGROUND:
+		{
+			extern void IOS_SetAppActive(bool active);
+			static const char* const names[] = { "will resign active", "entered the background", "coming back", "active again" };
+			Printf("iOS: %s\n", names[sev.type - SDL_APP_WILLENTERBACKGROUND]);
+			if (sev.type == SDL_APP_DIDENTERBACKGROUND) IOS_SetAppActive(false);
+			else if (sev.type == SDL_APP_WILLENTERFOREGROUND) IOS_SetAppActive(true);
+		}
+		break;
+#endif
 	case SDL_WINDOWEVENT:
 		extern void ProcessSDLWindowEvent(const SDL_WindowEvent &);
 		ProcessSDLWindowEvent(sev.window);
@@ -408,6 +564,7 @@ void MessagePump (const SDL_Event &sev)
 			event.data1 = x;
 			event.data2 = y;
 
+			IOS_PointsToPixels(event.data1, event.data2);
 			screen->ScaleCoordsFromWindow(event.data1, event.data2);
 
 			if (sev.type == SDL_MOUSEBUTTONDOWN)
@@ -451,6 +608,7 @@ void MessagePump (const SDL_Event &sev)
 			event.data1 = sev.motion.x;
 			event.data2 = sev.motion.y;
 
+			IOS_PointsToPixels(event.data1, event.data2);
 			screen->ScaleCoordsFromWindow(event.data1, event.data2);
 
 			event.type = EV_GUI_Event;

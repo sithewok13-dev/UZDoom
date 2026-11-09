@@ -37,6 +37,20 @@ set(ABSL_BUILD_TESTING OFF) # don't build/run abseil tests
 # UZDoom itself has no libs. Ensure bundled dependencies are statically linked.
 set( BUILD_SHARED_LIBS OFF CACHE INTERNAL "" FORCE )
 
+# iOS (iPhone/iPad) build: SDL2 backend, Vulkan through MoltenVK.
+if( CMAKE_SYSTEM_NAME STREQUAL "iOS" )
+	set( DOOM_IOS ON )
+	add_definitions( -DDOOM_IOS=1 )
+endif()
+# The iOS touch controls (ios/IOSTouch.m, ios/IOSGame.cpp): on iOS, and in
+# the Linux test rig, which gives its own stand-in for the UIKit overlay
+# (DOOM_TOUCH_RIG_SOURCE: a C file that includes ios/IOSTouch.m)
+set( DOOM_TOUCH_RIG_SOURCE "" CACHE FILEPATH "Linux test rig for the iOS touch controls (a C file)" )
+if( DOOM_IOS OR DOOM_TOUCH_RIG_SOURCE )
+	set( DOOM_TOUCH ON )
+	add_definitions( -DDOOM_TOUCH=1 )
+endif()
+
 # make all targets use LTO - want to do this early in the cmake to ensure it applies to any targets
 option( FORCE_NO_LTO "Turn off LTO even if it would be possible to use it." NO )
 
@@ -214,6 +228,9 @@ if(DEFINED CMAKE_RUNTIME_OUTPUT_DIRECTORY)
 	set(ZDOOM_RESOURCE_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 elseif(WIN32)
 	set(ZDOOM_RESOURCE_DIR "${PROJECT_BINARY_DIR}/$<CONFIG>")
+elseif(DOOM_IOS)
+	# iOS: a flat app bundle; the game finds its files beside the executable
+	set(ZDOOM_RESOURCE_DIR "${ZDOOM_OUTPUT_DIR}/DOOM.app")
 elseif(APPLE)
 	set(ZDOOM_RESOURCE_DIR "${PROJECT_BINARY_DIR}/${ZDOOM_EXE_NAME}.app/Contents/Resources")
 else()
@@ -302,8 +319,12 @@ if( ${TARGET_ARCHITECTURE} MATCHES "x86_64" )
 	endif()
 endif()
 
+# (iOS: Vulkan through MoltenVK, which the app carries in Frameworks/)
 option (HAVE_VULKAN "Enable Vulkan support" ON)
-if( APPLE )
+if( DOOM_IOS )
+	# iOS: OpenGL ES is the fallback if Vulkan (MoltenVK) can't start
+	set( HAVE_GLES2 ON )
+elseif( APPLE )
 	option (HAVE_GLES2 "Enable GLES2 support" OFF)
 else()
 	option (HAVE_GLES2 "Enable GLES2 support" ON)
@@ -388,7 +409,7 @@ else()
 	set( REL_C_FLAGS "" )
 	set( DEB_C_FLAGS "" )
 
-	if( APPLE )
+	if( APPLE AND NOT DOOM_IOS )
 		list(PREPEND CMAKE_PREFIX_PATH "/opt/local")    # port
 		list(PREPEND CMAKE_PREFIX_PATH "/opt/homebrew") # brew
 		if(DEFINED XCODE_VERSION AND XCODE_VERSION VERSION_LESS 27.0)
@@ -404,7 +425,7 @@ else()
 		# Generic GCC/Clang requires position independent executable to be enabled explicitly
 		set( ALL_C_FLAGS "${ALL_C_FLAGS} -fPIE" )
 		set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pie" )
-	endif( APPLE )
+	endif( APPLE AND NOT DOOM_IOS )
 endif()
 
 set( CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} ${REL_LINKER_FLAGS}" )
@@ -491,10 +512,22 @@ else()
 endif()
 
 # ZMUSIC
+if( DOOM_IOS )
+	# iOS can't load libraries at run time: libsndfile (with its codecs) is
+	# built in (ios/build_deps.sh gives SNDFILE_INCLUDE_DIR / SNDFILE_LIBRARY
+	# and the codecs in IOS_SNDFILE_CODECS); no mpg123
+	set( DYN_SNDFILE OFF CACHE BOOL "" FORCE )
+	set( DYN_MPG123 OFF CACHE BOOL "" FORCE )
+	set( CMAKE_DISABLE_FIND_PACKAGE_MPG123 ON )
+	set( IOS_SNDFILE_CODECS "" CACHE STRING "iOS: libsndfile's codec libraries (Vorbis, FLAC, Opus, Ogg)" )
+endif()
 add_subdirectory( libraries/ZMusic )
 set( ZMUSIC_ROOT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/libraries/zmusic" )
 set( ZMUSIC_INCLUDE_DIR ${ZMUSIC_ROOT_PATH}/include )
 set( ZMUSIC_LIBRARIES zmusic )
+if( DOOM_IOS )
+	list( APPEND ZMUSIC_LIBRARIES ${IOS_SNDFILE_CODECS} )
+endif()
 
 set( LZMA_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libraries/lzma/C" )
 
@@ -518,7 +551,12 @@ install(DIRECTORY docs/
 		DESTINATION ${INSTALL_DOCS_PATH}
 		COMPONENT "Documentation")
 
-option( DYN_OPENAL "Dynamically load OpenAL" ON )
+if( DOOM_IOS )
+	# iOS: OpenAL Soft is linked in (ios/build_deps.sh)
+	set( DYN_OPENAL OFF )
+else()
+	option( DYN_OPENAL "Dynamically load OpenAL" ON )
+endif()
 option( BUILD_NONFREE "Build non-free assets used by commercial games" ON )
 
 add_subdirectory( src )

@@ -411,6 +411,10 @@ unsigned int I_MakeRNGSeed()
 
 void I_OpenShellFolder(const char* infolder)
 {
+#ifdef DOOM_IOS
+	// iOS: no shell; the folders are in the Files app
+	Printf("The folder is in Files > On My iPhone > Raze: %s\n", infolder);
+#else
 	char* curdir = getcwd(NULL,0);
 
 	if (!chdir(infolder))
@@ -434,4 +438,5 @@ void I_OpenShellFolder(const char* infolder)
 			Printf("Unable to open requested directory\n");
 	}
 	free(curdir);
+#endif
 }

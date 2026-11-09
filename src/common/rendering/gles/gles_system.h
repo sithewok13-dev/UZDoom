@@ -40,7 +40,13 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#if defined(DOOM_IOS) || defined(DOOM_GLES_RIG)
+// iOS (and the Linux test rig built with -DDOOM_GLES_RIG): real OpenGL ES,
+// functions looked up in the linked GLES library
+#define USE_GLAD_LOADER 1
+#else
 #define USE_GLAD_LOADER 0 // Set to 1 to use the GLAD loader, otherwise use noramal GZDoom loader for PC
+#endif
 
 #if (USE_GLAD_LOADER)
 	#include "glad/glad.h"
@@ -85,7 +91,7 @@
 	#include "gl_load/gl_load.h"
 #endif
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) && !defined(DOOM_IOS)
 	#include <OpenGL/OpenGL.h>
 #endif
 
@@ -107,6 +113,8 @@ namespace OpenGLESRenderer
 
 	struct RenderContextGLES
 	{
+		unsigned int defaultFramebuffer; // the screen's frame buffer: 0 on desktops, SDL's own on iOS
+		bool bgraInternalRGBA;           // BGRA uploads need internal format RGBA (Apple's GL_APPLE_texture_format_BGRA8888)
 		unsigned int flags;
 		unsigned int maxlights;
 		unsigned int numlightvectors;

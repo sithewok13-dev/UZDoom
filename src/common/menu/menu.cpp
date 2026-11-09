@@ -115,6 +115,14 @@ FButtonStatus	MenuButtons[NUM_MKEYS];
 int				MenuButtonTickers[NUM_MKEYS];
 bool			MenuButtonOrigin[NUM_MKEYS];
 int				BackbuttonTime;
+// Added (touch screens): where the menus' BACK button goes (screen pixels from
+// its corner), clear of the screen's rounded corners and a notch, and that it
+// always shows (there's no mouse to bring it up)
+int				BackbuttonX, BackbuttonY;
+bool			BackbuttonAlways;
+#ifdef DOOM_TOUCH
+extern "C" void IOSTouch_GetHudFrame(float afFrame[4]);
+#endif
 float			BackbuttonAlpha;
 static bool		MenuEnabled = true;
 DMenu			*CurrentMenu;
@@ -899,6 +907,18 @@ void M_Ticker (void)
 				}
 			}
 		}
+#ifdef DOOM_TOUCH
+		{
+			// (the HUD's frame: the screen less its corners and a notch, plus a gap)
+			float f[4];
+			IOSTouch_GetHudFrame(f);
+			const int w = screen->GetWidth(), h = screen->GetHeight();
+			BackbuttonX = int((f[0] + 0.015f) * w);
+			BackbuttonY = int((f[1] + 0.03f) * h);
+			BackbuttonAlways = true;
+			BackbuttonTime = 4 * GameTicRate;
+		}
+#endif
 		if (BackbuttonTime > 0)
 		{
 			if (BackbuttonAlpha < 1.f) BackbuttonAlpha += .1f;
@@ -1082,6 +1102,9 @@ CCMD(undocolorpic)
 DEFINE_GLOBAL(menuactive)
 DEFINE_GLOBAL(BackbuttonTime)
 DEFINE_GLOBAL(BackbuttonAlpha)
+DEFINE_GLOBAL(BackbuttonX)
+DEFINE_GLOBAL(BackbuttonY)
+DEFINE_GLOBAL(BackbuttonAlways)
 DEFINE_GLOBAL(GameTicRate)
 DEFINE_GLOBAL(menuDelegate)
 

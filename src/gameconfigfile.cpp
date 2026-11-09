@@ -233,6 +233,27 @@ FGameConfigFile::FGameConfigFile ()
 		}
 	}
 
+#ifdef DOOM_IOS
+	// Added (iOS): the game files go straight into Files > On My iPhone >
+	// DOOM (the app's Documents). iOS moves the app's folders to a new
+	// address at each update or reinstall, so saved full paths go stale:
+	// the search paths are made afresh at every launch.
+	{
+		FString docs = user_docs;
+		docs.Truncate(docs.Len() - strlen("/" GAME_DIR));
+		SetSection ("IWADSearch.Directories", true);
+		ClearCurrentSection();
+		SetValueForKey ("Path", docs.GetChars(), true);
+		SetSection ("FileSearch.Directories", true);
+		ClearCurrentSection();
+		SetValueForKey ("Path", docs.GetChars(), true);
+		SetSection ("SoundfontSearch.Directories", true);
+		ClearCurrentSection();
+		SetValueForKey ("Path", (docs + "/soundfonts").GetChars(), true);
+		SetValueForKey ("Path", "$PROGDIR/soundfonts", true);
+		SetValueForKey ("Path", "$PROGDIR/fm_banks", true);
+	}
+#endif
 	// Set default IWAD search paths if none present
 	if (!SetSection ("IWADSearch.Directories"))
 	{

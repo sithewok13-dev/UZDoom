@@ -38,12 +38,30 @@ void VulkanInstance::ReleaseResources()
 	Instance = nullptr;
 }
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+// Added (iOS): MoltenVK is loaded from the app's Frameworks folder by the
+// platform code, which hands over its vkGetInstanceProcAddr (ios/i_ios.mm)
+extern "C" void* IOS_VulkanGetInstanceProcAddr();
+#endif
+
 void VulkanInstance::InitVolk()
 {
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	void* getProc = IOS_VulkanGetInstanceProcAddr();
+	if (!getProc)
+	{
+		VulkanError("Unable to find Vulkan (MoltenVK)");
+	}
+	volkInitializeCustom((PFN_vkGetInstanceProcAddr)getProc);
+#else
 	if (volkInitialize() != VK_SUCCESS)
 	{
 		VulkanError("Unable to find Vulkan");
 	}
+#endif
 	auto iver = volkGetInstanceVersion();
 	if (iver == 0)
 	{

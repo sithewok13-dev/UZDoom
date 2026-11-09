@@ -65,6 +65,13 @@ static void* LoadGLES2Proc(const char* name)
 
 #include <dlfcn.h>
 
+#if defined(DOOM_IOS) || defined(DOOM_GLES_RIG)
+// The OpenGLES framework (the rig: libGLESv2) is linked into the app: look the functions up in it
+static void* LoadGLES2Proc(const char* name)
+{
+	return dlsym(RTLD_DEFAULT, name);
+}
+#else
 static void* LoadGLES2Proc(const char* name)
 {
 	static void* glesLib = NULL;
@@ -89,6 +96,7 @@ static void* LoadGLES2Proc(const char* name)
 
 	return ret;
 }
+#endif // DOOM_IOS
 
 #endif
 
@@ -164,6 +172,32 @@ namespace OpenGLESRenderer
 		glGenVertexArrays(1, &vao);
 		glBindVertexArray(vao);
 #endif
+		// On iOS there is no frame buffer 0: SDL draws to the screen through
+		// a frame buffer of its own, bound when the context is made current.
+		// Remember it, so "the screen" is that one.
+		{
+			GLint fb = 0;
+			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fb);
+			gles.defaultFramebuffer = (unsigned int)fb;
+			Printf("GLES screen frame buffer: %u\n", gles.defaultFramebuffer);
+		}
+#ifdef DOOM_GLES_RIG
+		// Rig only: report every GL error with the call that caused it
+		{
+			typedef void (APIENTRYP DEBUGPROC)(GLenum, GLenum, GLuint, GLenum, GLsizei, const GLchar*, const void*);
+			typedef void (APIENTRYP CBPROC)(DEBUGPROC, const void*);
+			auto cb = (CBPROC)LoadGLES2Proc("glDebugMessageCallback");
+			if (cb)
+			{
+				glEnable(0x92E0 /* GL_DEBUG_OUTPUT */);
+				glEnable(0x8242 /* GL_DEBUG_OUTPUT_SYNCHRONOUS */);
+				cb([](GLenum, GLenum type, GLuint, GLenum, GLsizei, const GLchar* msg, const void*) {
+					if (type == 0x824C /* GL_DEBUG_TYPE_ERROR */) fprintf(stderr, "GLERROR: %s\n", msg);
+				}, nullptr);
+			}
+			else fprintf(stderr, "GLERROR channel: no glDebugMessageCallback\n");
+		}
+#endif
 		CollectExtensions();
 
 		Printf("GL_VENDOR: %s\n", glGetString(GL_VENDOR));
@@ -177,6 +211,8 @@ namespace OpenGLESRenderer
 		}
 		const char* glVersionStr = (const char*)glGetString(GL_VERSION);
 		double glVersion = strtod(glVersionStr, NULL);
+		// GLES reports "OpenGL ES 3.0 ...": read the number after the prefix
+		if (!strncmp(glVersionStr, "OpenGL ES ", 10)) glVersion = strtod(glVersionStr + 10, NULL);
 
 		Printf("GL Version parsed = %f\n", glVersion);
 
@@ -225,6 +261,16 @@ namespace OpenGLESRenderer
 			gles.npotAvailable = CheckExtension("GL_OES_texture_npot");
 			gles.depthClampAvailable = CheckExtension("GL_EXT_depth_clamp");
 			gles.anistropicFilterAvailable = CheckExtension("GL_EXT_texture_filter_anisotropic");
+			// Apple's BGRA extension (iOS) takes BGRA data only into an RGBA
+			// texture; the EXT one (Android, Mesa) wants BGRA for both
+			gles.bgraInternalRGBA = !CheckExtension("GL_EXT_texture_format_BGRA8888") && CheckExtension("GL_APPLE_texture_format_BGRA8888");
+			if (glVersion >= 3.0)
+			{
+				// Core in OpenGL ES 3, so not listed as extensions (iOS lists
+				// neither, and only accepts a packed depth/stencil buffer)
+				gles.depthStencilAvailable = true;
+				gles.npotAvailable = true;
+			}
 		}
 		else if (gles.glesMode == GLES_MODE_OGL2)
 		{

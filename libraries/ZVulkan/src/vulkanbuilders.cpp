@@ -1766,6 +1766,8 @@ VulkanDeviceBuilder::VulkanDeviceBuilder()
 {
 	OptionalExtension(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
 	OptionalExtension(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
+	// (Added: MoltenVK, on Apple's systems: the spec wants it on wherever it is offered)
+	OptionalExtension("VK_KHR_portability_subset");
 }
 
 VulkanDeviceBuilder& VulkanDeviceBuilder::RequireExtension(const std::string& extensionName)

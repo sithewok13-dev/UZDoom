@@ -22,7 +22,10 @@ if( DEM_CMAKE_COMPILER_IS_GNUCXX_COMPATIBLE )
 	endif()
 endif()
 
-if( APPLE )
+if( DOOM_IOS )
+	# iOS: the SDL backend (ios/i_ios.mm stands in for the Mac files)
+	set( OSX_COCOA_BACKEND OFF )
+elseif( APPLE )
 		option( OSX_COCOA_BACKEND "Use native Cocoa backend instead of SDL" ON )
 endif()
 
@@ -96,8 +99,15 @@ else()
 
 	# Non-Windows version also needs SDL except native OS X backend
 	if( NOT APPLE OR NOT OSX_COCOA_BACKEND )
-		find_package( SDL2 CONFIG REQUIRED )
-		list( APPEND PROJECT_LIBRARIES SDL2::SDL2 )
+		if( DOOM_IOS )
+			# iOS: the static SDL2 from ios/build_deps.sh (SDL2main runs the
+			# app and calls the game's main); headers as <SDL.h> and <SDL2/SDL.h>
+			include_directories( SYSTEM "${SDL2_INCLUDE_DIR}" "${SDL2_INCLUDE_DIR}/.." )
+			list( APPEND PROJECT_LIBRARIES ${SDL2_LIBRARY} )
+		else()
+			find_package( SDL2 CONFIG REQUIRED )
+			list( APPEND PROJECT_LIBRARIES SDL2::SDL2 )
+		endif()
 	endif()
 
 endif()
@@ -115,7 +125,7 @@ if( NOT NO_OPENAL )
 			mark_as_advanced(CLEAR OPENAL_LIBRARY)
 			if( OPENAL_LIBRARY )
 				set( PROJECT_LIBRARIES ${OPENAL_LIBRARY} ${PROJECT_LIBRARIES} )
-				if( APPLE )
+				if( APPLE AND NOT DOOM_IOS )
 					set( PROJECT_LIBRARIES ${PROJECT_LIBRARIES} "-framework AudioUnit -framework CoreAudio -framework ApplicationServices -framework AudioToolbox -framework CoreFoundation" )
 				endif()
 			else()
@@ -434,7 +444,18 @@ elseif( APPLE )
 	else()
 		set( SYSTEM_SOURCES_DIR common/platform/posix common/platform/posix/sdl )
 		set( SYSTEM_SOURCES ${PLAT_SDL_SOURCES} )
-		set( PLAT_OSX_SOURCES ${PLAT_OSX_SOURCES} common/platform/posix/sdl/i_system.mm )
+		if( DOOM_IOS )
+			# No crash catcher (no fork on iOS), no AppKit: the iOS file has
+			# the game picker and the fatal error alert
+			list( REMOVE_ITEM SYSTEM_SOURCES common/platform/posix/sdl/crashcatcher.c )
+			set( PLAT_OSX_SOURCES
+				common/platform/posix/osx/i_specialpaths.mm
+				../ios/i_ios.mm
+				../ios/IOSPicker.mm )
+			set_source_files_properties( ../ios/IOSPicker.mm PROPERTIES COMPILE_FLAGS -fobjc-arc )
+		else()
+			set( PLAT_OSX_SOURCES ${PLAT_OSX_SOURCES} common/platform/posix/sdl/i_system.mm )
+		endif()
 		set( OTHER_SYSTEM_SOURCES ${PLAT_WIN32_SOURCES} ${PLAT_COCOA_SOURCES} ${PLAT_UNIX_SOURCES} )
 	endif()
 
@@ -1503,7 +1524,32 @@ if( DEM_CMAKE_COMPILER_IS_GNUCXX_COMPATIBLE )
 		APPEND_STRING PROPERTY COMPILE_FLAGS " ${SSE2_ENABLE}" )
 endif()
 
-if( APPLE )
+if( DOOM_TOUCH )
+	# The touch controls' game side (ios/IOSGame.cpp); the overlay itself
+	# (ios/IOSTouch.m) comes with the touch controls
+	set( TOUCH_SOURCES ../ios/IOSGame.cpp )
+	target_sources( zdoom PRIVATE ${TOUCH_SOURCES} )
+	set_source_files_properties( ${TOUCH_SOURCES} PROPERTIES SKIP_PRECOMPILE_HEADERS TRUE )
+endif()
+
+if( DOOM_IOS )
+	# What SDL2, OpenAL Soft, MoltenVK's loader and the overlay need on iOS
+	set( IOS_FRAMEWORKS UIKit Foundation OpenGLES QuartzCore CoreGraphics CoreFoundation
+		AVFoundation AudioToolbox CoreAudio CoreMotion GameController Metal CoreHaptics CoreBluetooth
+		UserNotifications )
+	foreach( fw ${IOS_FRAMEWORKS} )
+		target_link_libraries( zdoom "-framework ${fw}" )
+	endforeach()
+	target_link_libraries( zdoom iconv )
+	set_target_properties( zdoom PROPERTIES
+		OUTPUT_NAME DOOM
+		MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/ios/Info.plist.in"
+		MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.sithewok13.doom"
+		MACOSX_BUNDLE_BUNDLE_NAME "DOOM"
+		MACOSX_BUNDLE_SHORT_VERSION_STRING "${DOOM_IOS_VERSION}"
+		MACOSX_BUNDLE_BUNDLE_VERSION "${DOOM_IOS_VERSION}"
+		XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "" )
+elseif( APPLE )
 	set( LINK_FRAMEWORKS "-framework Cocoa -framework IOKit -framework OpenGL")
 
 	if( HAVE_VULKAN )
