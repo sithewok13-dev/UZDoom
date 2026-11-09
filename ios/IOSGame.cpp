@@ -744,6 +744,19 @@ CCMD(ios_rig)
 	IOSTouchRig_Command(cmd.GetChars());
 }
 
+// The app going to the background and back, as iOS's app state does it
+// (sdlglvideo.cpp's IOS_SetAppActive, iOS only): ios_rigactive 0 / 1
+void S_SetSoundPaused(int state);
+CCMD(ios_rigactive)
+{
+	extern bool AppActive;
+	const bool active = argv.argc() < 2 || atoi(argv[1]) != 0;
+	Printf("rig: app %s\n", active ? "in front" : "in the background");
+	S_SetSoundPaused(active ? 1 : 0);
+	AppActive = active;
+	if (!active) IOSTouch_Hide();
+}
+
 // The player as the rig's checks need it
 CCMD(ios_rigpos)
 {
