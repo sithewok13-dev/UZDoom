@@ -341,7 +341,11 @@ bool I_PickIWad (bool showwin, FStartupSelectionInfo& info)
 		return true;
 	}
 
-#ifdef __APPLE__
+#if defined(DOOM_IOS)
+	// Added (iOS): the game picker's cards (ios/i_ios.mm), add-ons included
+	extern bool I_PickIWad_IOS(FStartupSelectionInfo& info);
+	return I_PickIWad_IOS(info);
+#elif defined(__APPLE__)
 	const int ret = I_PickIWad_Cocoa(&(*info.Wads)[0], (int)info.Wads->Size(), showwin, info.DefaultIWAD);
 	if (ret >= 0)
 	{

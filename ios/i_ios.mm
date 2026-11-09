@@ -138,13 +138,20 @@ static UIAlertController* Sheet(NSString* title, NSString* message)
 	return [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleActionSheet];
 }
 
-int I_PickIWad_Cocoa(WadStuff* wads, int numwads, bool showwin, int defaultiwad)
+// The game picker (i_system.cpp's I_PickIWad on iOS): the picker's cards,
+// a plain list if they can't be shown. An add-on's files are loaded with
+// the game (-file). false: none picked (the app ends).
+bool I_PickIWad_IOS(FStartupSelectionInfo& info)
 {
-	if (!showwin) return defaultiwad;
-	// The picker (ios/IOSPicker.mm); the plain list if it can't be shown
-	int chosen = IOSPicker_Run(wads, numwads, defaultiwad);
+	const TArray<WadStuff>& wads = *info.Wads;
+	const int numwads = (int)wads.Size();
+	TArray<const char*> names;
+	for (int i = 0; i < numwads; i++) names.Push(wads[i].Name.GetChars());
+	static char files[4096];
+	int chosen = IOSPicker_Run(names.Data(), numwads, info.DefaultIWAD, files, sizeof(files));
 	if (chosen == IOSPICKER_UNAVAILABLE)
 	{
+		files[0] = 0;
 		NSMutableArray<NSString*>* titles = [NSMutableArray array];
 		for (int i = 0; i < numwads; i++)
 		{
@@ -156,7 +163,17 @@ int I_PickIWad_Cocoa(WadStuff* wads, int numwads, bool showwin, int defaultiwad)
 		if (chosen == numwads) chosen = -1;
 	}
 	printf("Game picker: chose %d of %d\n", chosen, numwads);
-	return chosen;
+	if (chosen < 0 || chosen >= numwads) return false;
+	info.DefaultIWAD = chosen;
+	// (no extra arguments kept from earlier runs: only this pick's add-on)
+	info.DefaultArgs = "";
+	info.bSaveArgs = false;
+	if (files[0])
+	{
+		info.Args->AppendRawArg("-file");
+		for (char* f = strtok(files, "\n"); f; f = strtok(nullptr, "\n")) info.Args->AppendRawArg(f);
+	}
+	return true;
 }
 
 void Mac_I_FatalError(const char* errortext)

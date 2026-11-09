@@ -832,6 +832,17 @@ int FIWadManager::IdentifyVersion (std::vector<FileSys::ResourceName>&wadfiles, 
 #	endif
 #endif
 
+#ifdef DOOM_IOS
+		// Added (iOS): where the game files go, in the Files app's words
+		I_FatalError(
+			"No game files found.\n"
+			"\n"
+			"Copy your own .wad files into Files > On My iPhone > DOOM "
+			"(straight into that folder, not into a folder inside it): "
+			"doom.wad (DOOM), doom2.wad (DOOM II), tnt.wad and plutonia.wad "
+			"(Final DOOM), and any add-ons (nerve.wad, sigil.wad, ...). "
+			"Then open DOOM again.");
+#endif
 		I_FatalError(
 			"Cannot find a game IWAD (doom.wad, heretic.wad, etc)!\n"
 			"Did you install " GAMENAME " properly?\n"
