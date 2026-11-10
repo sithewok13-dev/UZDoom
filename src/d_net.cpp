@@ -2215,6 +2215,14 @@ void TryRunTics()
 #endif
 	if (!netgame && !AppActive && vid_lowerinbackground)
 		doWait = true;
+#ifdef DOOM_IOS
+	// Added (iOS): why frames waited for a tic, for the log's frame times
+	// (ios/i_ios.mm: bit 0 waited, 1 cl_capfps, 2 pauseext, 4 r_NoInterpolate)
+	{
+		extern int iosWaitReasons;
+		if (doWait) iosWaitReasons |= 1 | (cl_capfps ? 2 : 0) | (pauseext ? 4 : 0) | (r_NoInterpolate ? 8 : 0);
+	}
+#endif
 
 	// Get the full number of tics the client can run.
 	if (doWait)

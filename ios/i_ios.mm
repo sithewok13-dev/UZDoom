@@ -308,17 +308,59 @@ extern "C" void* IOS_VulkanGetInstanceProcAddr()
 	return SDL_Vulkan_GetVkGetInstanceProcAddr();
 }
 
+extern "C" int IOSTouch_MaxFps(void);
 static uint64_t IOS_Ns()
 {
 	return clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
 }
 static uint64_t iosPresentNs = 0;
 
+// The frame's times, logged every 5 s of play (as the Raze port's): frames
+// a second, and a frame's milliseconds: the tics (with any wait for one, and
+// why: cl_capfps, pauseext, r_NoInterpolate), the input and the touch
+// controls (with the FPS cap's sleep), and drawing (Vulkan: its own work,
+// its waits for a screen image and for the GPU)
+int iosWaitReasons = 0; // (d_net.cpp's TryRunTics: bits of why it waited for a tic)
+extern uint64_t iosVkAcquireNs, iosVkGpuWaitNs; // (vk_commandbuffer.cpp)
+extern "C" void IOS_PerfFrame(uint64_t ticsNs, uint64_t inputNs, uint64_t drawNs, bool inLevel)
+{
+	static uint64_t tStart = 0, sumTics = 0, sumInput = 0, sumDraw = 0, sumAcq = 0, sumGpu = 0, worst = 0;
+	static int frames = 0, waits = 0, reasons = 0;
+	const uint64_t now = IOS_Ns();
+	const uint64_t acq = iosVkAcquireNs, gpu = iosVkGpuWaitNs;
+	iosVkAcquireNs = iosVkGpuWaitNs = 0;
+	const int why = iosWaitReasons;
+	iosWaitReasons = 0;
+	if (!inLevel) { tStart = 0; return; }
+	if (tStart == 0) { tStart = now; frames = waits = reasons = 0; sumTics = sumInput = sumDraw = sumAcq = sumGpu = worst = 0; return; }
+	frames++;
+	if (why & 1) waits++;
+	reasons |= why;
+	sumTics += ticsNs;
+	sumInput += inputNs;
+	sumDraw += drawNs;
+	sumAcq += acq;
+	sumGpu += gpu;
+	if (ticsNs + inputNs + drawNs > worst) worst = ticsNs + inputNs + drawNs;
+	if (now - tStart >= 5000000000ull && frames > 0)
+	{
+		const double ms = 1e-6 / frames;
+		printf("iOS: frames %.1f fps (FPS %d); per frame %.1f ms (worst %.1f): tics %.1f (%d of %d frames waited for a tic%s%s%s), "
+			"input %.1f, drawing %.1f (waiting for the screen %.1f, for the GPU %.1f)\n",
+			frames * 1e9 / (now - tStart), IOSTouch_MaxFps(), (sumTics + sumInput + sumDraw) * ms, worst * 1e-6, sumTics * ms, waits, frames,
+			(reasons & 2) ? ": cl_capfps" : "", (reasons & 4) ? ": paused" : "", (reasons & 8) ? ": no interpolation" : "",
+			sumInput * ms, sumDraw * ms, sumAcq * ms, sumGpu * ms);
+		fflush(stdout);
+		tStart = now;
+		frames = waits = reasons = 0;
+		sumTics = sumInput = sumDraw = sumAcq = sumGpu = worst = 0;
+	}
+}
+
 // The tray's FPS held at 60 on a 120 Hz screen: the screen is asked for 60,
 // but the game's frames would still come at the screen's 120 (vsync), so
 // they are kept at most 1/60 s apart here (the waits save battery). (From
 // the Raze port.)
-extern "C" int IOSTouch_MaxFps(void);
 extern "C" void IOS_FrameCap(void)
 {
 	static uint64_t next = 0;

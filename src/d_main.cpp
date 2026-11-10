@@ -132,6 +132,7 @@
 #endif
 #ifdef DOOM_IOS
 extern "C" void IOS_FrameCap(void); // Added (iOS): ios/i_ios.mm
+extern "C" void IOS_PerfFrame(uint64_t ticsNs, uint64_t inputNs, uint64_t drawNs, bool inLevel); // Added (iOS): ios/i_ios.mm
 #endif
 
 using namespace FileSys;
@@ -1673,7 +1674,13 @@ void D_DoomLoop ()
 			}
 			I_SetFrameTime();
 
+#ifdef DOOM_IOS
+			const uint64_t iosT0 = I_nsTime();
+#endif
 			TryRunTics (); // will run at least one tic
+#ifdef DOOM_IOS
+			const uint64_t iosT1 = I_nsTime();
+#endif
 			// Update display, next frame, with current state.
 			I_StartTic ();
 			D_ProcessEvents();
@@ -1682,8 +1689,14 @@ void D_DoomLoop ()
 #endif
 #ifdef DOOM_IOS
 			IOS_FrameCap(); // Added (iOS): the tray's FPS held at 60 keeps the frames 1/60 s apart
+			const uint64_t iosT2 = I_nsTime();
 #endif
 			D_Display ();
+#ifdef DOOM_IOS
+			// Added (iOS): the frame's times, for the log every 5 s of play
+			IOS_PerfFrame(iosT1 - iosT0, iosT2 - iosT1, I_nsTime() - iosT2,
+				gamestate == GS_LEVEL && menuactive == MENU_Off && !paused && ConsoleState == c_up);
+#endif
 			S_UpdateMusic();
 
 			if (gameloop_abort)
