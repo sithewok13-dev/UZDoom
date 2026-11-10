@@ -123,7 +123,7 @@ jobs:
         if LC_ALL=C grep -aqF "Unable to create init zwidget" "$BIN"; then echo "::error::The app still asks ZWidget for a Win32 or SDL2 backend"; exit 1; fi
         echo "ZWidget: the iOS backend is in $BIN"
 
-, shown under the
+    # The build stamp (the run number and the UTC date), shown under the
     # open MENU tray as "build 80 · Nov 9" and on the release's first line
     - name: Build stamp
       id: stamp
