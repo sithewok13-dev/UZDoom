@@ -64,6 +64,7 @@ EXTERN_CVAR (Int, disableautosave)
 EXTERN_CVAR (Int, autosavecount)
 #ifdef DOOM_TOUCH
 #include "../ios/IOSCamera.h" // Added (iOS touch): the CAMERA
+#include "../ios/IOSGame.h" // Added (iOS touch): the game held still
 #endif
 EXTERN_CVAR (Bool, cl_capfps)
 EXTERN_CVAR (Bool, vid_vsync)
@@ -2211,6 +2212,12 @@ void TryRunTics()
 	// Added (iOS touch): the CAMERA's Action Freeze holds the game still, but
 	// its camera moves with the fingers: every frame drawn, not one per tic
 	if (IOSCamera_IsFrozen())
+		doWait = false;
+	// Added (iOS touch): nor while the game is held still (the weapon wheel,
+	// the level list, a selfie, "Switch game") or paused: the frozen frame is
+	// drawn at the screen's pace, so the overlay and the FPS readout stay
+	// smooth (build 14 drew 35 frames a second there, one a tic)
+	if (!netgame && gamestate == GS_LEVEL && (IOSGame_HoldsGame() || paused))
 		doWait = false;
 #endif
 	if (!netgame && !AppActive && vid_lowerinbackground)

@@ -131,8 +131,8 @@
 #include "../ios/IOSGame.h" // Added (iOS touch): the iOS touch controls
 #endif
 #ifdef DOOM_IOS
-extern "C" void IOS_FrameCap(void); // Added (iOS): ios/i_ios.mm
-extern "C" void IOS_PerfFrame(uint64_t ticsNs, uint64_t inputNs, uint64_t drawNs, bool inLevel); // Added (iOS): ios/i_ios.mm
+extern "C" uint64_t IOS_FrameCap(void); // Added (iOS): ios/i_ios.mm
+extern "C" void IOS_PerfFrame(uint64_t capNs, uint64_t ticsNs, uint64_t inputNs, uint64_t drawNs, bool inLevel); // Added (iOS): ios/i_ios.mm
 #endif
 
 using namespace FileSys;
@@ -1664,6 +1664,12 @@ void D_DoomLoop ()
 	{
 		try
 		{
+#ifdef DOOM_IOS
+			// Added (iOS): the frames' pace (the tray's FPS 60: a frame every
+			// 1/60 s, steered onto the screen's refreshes), before the frame's
+			// time is read for the interpolation and the touches come in
+			const uint64_t iosCap = IOS_FrameCap();
+#endif
 			GStrings.SetDefaultGender(players[consoleplayer].userinfo.GetGender()); // cannot be done when the CVAR changes because we don't know if it's for the consoleplayer.
 
 			// frame syncronous IO operations
@@ -1688,13 +1694,12 @@ void D_DoomLoop ()
 			IOSGame_Frame(); // Added (iOS touch): the touch controls (after the frame's touches came in)
 #endif
 #ifdef DOOM_IOS
-			IOS_FrameCap(); // Added (iOS): the tray's FPS held at 60 keeps the frames 1/60 s apart
 			const uint64_t iosT2 = I_nsTime();
 #endif
 			D_Display ();
 #ifdef DOOM_IOS
 			// Added (iOS): the frame's times, for the log every 5 s of play
-			IOS_PerfFrame(iosT1 - iosT0, iosT2 - iosT1, I_nsTime() - iosT2,
+			IOS_PerfFrame(iosCap, iosT1 - iosT0, iosT2 - iosT1, I_nsTime() - iosT2,
 				gamestate == GS_LEVEL && menuactive == MENU_Off && !paused && ConsoleState == c_up);
 #endif
 			S_UpdateMusic();

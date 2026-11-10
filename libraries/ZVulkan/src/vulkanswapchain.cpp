@@ -248,11 +248,12 @@ int VulkanSwapChain::AcquireImage(VulkanSemaphore* semaphore, VulkanFence* fence
 	}
 }
 
-void VulkanSwapChain::QueuePresent(int imageIndex, VulkanSemaphore* semaphore)
+void VulkanSwapChain::QueuePresent(int imageIndex, VulkanSemaphore* semaphore, const void* presentNext)
 {
 	uint32_t index = imageIndex;
 	VkPresentInfoKHR presentInfo = {};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.pNext = presentNext;
 	presentInfo.waitSemaphoreCount = semaphore ? 1 : 0;
 	presentInfo.pWaitSemaphores = semaphore ? &semaphore->semaphore : VK_NULL_HANDLE;
 	presentInfo.swapchainCount = 1;

@@ -80,12 +80,22 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   map units; the arrangements were measured in the Wolf3D port's tiles
   (`CAM_S`, 60 units).
 - **Frame rate:** FPS in the tray (held: 60 <-> 120). The game ticks at 35
-  Hz and the renderer interpolates. `IOS_FrameCap` keeps frames 1/60 s
-  apart at 60; a log line every 5 s of play gives fps and a frame's ms
-  (tics, input, drawing, Vulkan's waits) and why frames waited for a tic
-  (`IOS_PerfFrame`, `i_ios.mm`). Build 12's readout said 35 in play on the
-  phone; the rig draws more frames than tics, so the cause is phone-only
-  and the log is there to find it (not found yet).
+  Hz and the renderer interpolates. The pace (`ios/IOSPacer.h`, called as
+  `IOS_FrameCap` at the top of `D_DoomLoop`, before the frame's time and the
+  touches are read): at 60 a frame starts every 1/60 s and asks the screen
+  to show it one period later (VK_GOOGLE_display_timing: MoltenVK's
+  presentAtTime, in `vk_framebuffer.cpp`), the starts steered onto the
+  screen's refreshes by the real shown times; at 120 plain vsync. Build 14
+  slept after reading the time and the touches, and vsync on a 120 Hz screen
+  showed a frame at one refresh or the next: judder at "60.0 fps". The look
+  is resampled by the touches' own timestamps (`IOSTouch_LookTake`; build
+  14's recording turned 6, 18, 6, 18 px a frame). While the game is held
+  still (wheel, LEVEL list, CAMERA, GAMES) or paused, frames don't wait for
+  a tic. Log every 5 s of play (`IOS_PerfFrame`, `i_ios.mm`): fps and a
+  frame's ms (its turn's wait, tics, input, drawing, Vulkan's waits), and
+  "shown every ... ms (min, max, spread): n uneven, n late", the screen's
+  real present times. `ios/rig/IOSPacerSim.cpp` runs the pacer against a
+  pretend 120/60 Hz screen (build 14's way: a third of frames uneven).
 - **iOS code:** `ios/`: `i_ios.mm` (main, paths, the picker's fallback, the
   error alert, the log, MoltenVK, frame cap and log), `IOSPicker.mm`,
   `IOSTouch.m`/`.h`, `IOSGame.cpp`/`.h`, `IOSCamera.cpp`/`.h`,

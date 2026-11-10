@@ -82,8 +82,52 @@ void VkFramebufferManager::AcquireImage()
 	}
 }
 
+#ifdef DOOM_IOS
+// Added (iOS): the frames' pace (ios/i_ios.mm, ios/IOSPacer.h)
+extern "C" void IOS_PresentRefresh(uint64_t refreshNs);
+extern "C" void IOS_PresentShown(uint32_t id, uint64_t actualNs);
+extern "C" uint64_t IOS_PresentPlan(uint32_t* pId);
+#endif
+
 void VkFramebufferManager::QueuePresent()
 {
 	if (PresentImageIndex != -1)
+	{
+#ifdef DOOM_IOS
+		// Added (iOS): with VK_GOOGLE_display_timing, each frame asks to be
+		// shown at the time the pace plans for it, and the times earlier
+		// frames were really shown go back to the pacer (and the log)
+		VkDevice dev = fb->device->device;
+		VkSwapchainKHR sc = SwapChain->Handle();
+		if (fb->device->SupportsExtension(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME) && sc != VK_NULL_HANDLE
+			&& vkGetPastPresentationTimingGOOGLE && vkGetRefreshCycleDurationGOOGLE)
+		{
+			static VkSwapchainKHR refreshOf = VK_NULL_HANDLE;
+			if (refreshOf != sc)
+			{
+				VkRefreshCycleDurationGOOGLE rc = {};
+				if (vkGetRefreshCycleDurationGOOGLE(dev, sc, &rc) == VK_SUCCESS) IOS_PresentRefresh(rc.refreshDuration);
+				refreshOf = sc;
+			}
+			for (int round = 0; round < 4; round++)
+			{
+				VkPastPresentationTimingGOOGLE past[16];
+				uint32_t n = 16;
+				const VkResult r = vkGetPastPresentationTimingGOOGLE(dev, sc, &n, past);
+				if (r != VK_SUCCESS && r != VK_INCOMPLETE) break;
+				for (uint32_t i = 0; i < n; i++) IOS_PresentShown(past[i].presentID, past[i].actualPresentTime);
+				if (r == VK_SUCCESS) break;
+			}
+			VkPresentTimeGOOGLE when = {};
+			when.desiredPresentTime = IOS_PresentPlan(&when.presentID);
+			VkPresentTimesInfoGOOGLE times = {};
+			times.sType = VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE;
+			times.swapchainCount = 1;
+			times.pTimes = &when;
+			SwapChain->QueuePresent(PresentImageIndex, RenderFinishedSemaphores[PresentImageIndex].get(), &times);
+			return;
+		}
+#endif
 		SwapChain->QueuePresent(PresentImageIndex, RenderFinishedSemaphores[PresentImageIndex].get());
+	}
 }

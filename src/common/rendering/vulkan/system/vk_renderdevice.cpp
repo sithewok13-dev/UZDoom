@@ -117,6 +117,11 @@ VulkanRenderDevice::VulkanRenderDevice(void *hMonitor, bool fullscreen, std::sha
 {
 	VulkanDeviceBuilder builder;
 	builder.OptionalRayQuery();
+#ifdef DOOM_IOS
+	// Added (iOS): presents shown at a time asked for, and when they were
+	// really shown (MoltenVK: presentAtTime, presentedTime): ios/IOSPacer.h
+	builder.OptionalExtension(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
+#endif
 	builder.Surface(surface);
 	builder.SelectDevice(vk_device);
 	SupportedDevices = builder.FindDevices(surface->Instance);

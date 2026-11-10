@@ -311,12 +311,116 @@ static unsigned char _aPulseReads[IOSTOUCH_NUMBUTTONS];
 static unsigned char _aPulseGap[IOSTOUCH_NUMBUTTONS];
 static float _fMoveX = 0.0f, _fMoveY = 0.0f;
 static int _bMoveRun = 0; // the stick's thumb on its run marker
-static float _fLookX = 0.0f, _fLookY = 0.0f;
+// The look, resampled by the touches' own clock (UITouch.timestamp): every
+// look move is added to a running total (_fLookCum) and kept with its time;
+// each frame takes the total as it stood a moment ago (IOSTouch_TakeLook),
+// so a frame gets the finger's travel over its own stretch of time, however
+// the touch events happen to fall between frames. Taken whole, build 14's
+// drag turned the view 6, 18, 6, 18... points in frames that should each
+// have had 12 (one touch event in one frame, three in the next): seen as
+// judder when turning. What a frame takes lags the finger by at most
+// IOSTOUCH_LOOK_LAG_MAX; nothing is lost (what is left goes next frame).
+#define IOSTOUCH_LOOK_SAMPLES 32
+#define IOSTOUCH_LOOK_LAG_MAX 0.025  // s
+#define IOSTOUCH_LOOK_LAG_SPARE 0.002 // s more than the newest touch's
+#define IOSTOUCH_LOOK_LAG_FALL 0.0001 // s a frame: the lag eases back down
+static double _fLookCumX = 0.0, _fLookCumY = 0.0;   // all the look so far
+static double _fLookOutX = 0.0, _fLookOutY = 0.0;   // ...and what the game has taken of it
+static double _atLook[IOSTOUCH_LOOK_SAMPLES], _afLookAtX[IOSTOUCH_LOOK_SAMPLES], _afLookAtY[IOSTOUCH_LOOK_SAMPLES];
+static int _iLookFirst = 0, _ctLook = 0;            // the samples kept (a ring)
+static double _tLookLag = 0.0;                      // how far behind the newest touch a frame takes the look
+static double _tLookTaken = 0.0;                    // the time the last frame took it at
+static int _bLookFresh = 0;                         // a sample came since the last frame
+static double _tTouchStamp = 0.0;                   // the move being handled: its own time (0: now)
 static float _fGyroYaw = 0.0f, _fGyroPitch = 0.0f; // tilt aiming: degrees for the view to turn (+ left) and tilt (+ up)
 // The weapon wheel's pick (a weapon number) waiting to be read, and the one
 // being read now: reads left, its value, and the read after it with none
 // (weapon numbers + 1 here, 0 being none: the list's first weapon is 0)
 static int _iPickPending = 0, _iPickReads = 0, _iPickNow = 0, _bPickGap = 0;
+
+// The look not yet taken is dropped (under _lock)
+static void IOSTouch_LookDrop(void)
+{
+  _fLookOutX = _fLookCumX;
+  _fLookOutY = _fLookCumY;
+  _ctLook = 0;
+  _bLookFresh = 0;
+}
+
+// A look move of (dx,dy) mouse counts at time t (under _lock)
+static void IOSTouch_LookAdd(double dx, double dy, double t)
+{
+  if (_ctLook > 0) {
+    const int last = (_iLookFirst + _ctLook - 1) % IOSTOUCH_LOOK_SAMPLES;
+    if (t < _atLook[last]) t = _atLook[last]; // (kept in order)
+    // (a drag starting again: where it stood just before this move)
+    if (t - _atLook[last] > 0.1) _ctLook = 0;
+  }
+  if (_ctLook == 0) {
+    _iLookFirst = 0;
+    _atLook[0] = t - 1.0 / 120.0;
+    _afLookAtX[0] = _fLookCumX;
+    _afLookAtY[0] = _fLookCumY;
+    _ctLook = 1;
+  }
+  _fLookCumX += dx;
+  _fLookCumY += dy;
+  if (_ctLook == IOSTOUCH_LOOK_SAMPLES) {
+    _iLookFirst = (_iLookFirst + 1) % IOSTOUCH_LOOK_SAMPLES;
+    _ctLook--;
+  }
+  const int i = (_iLookFirst + _ctLook) % IOSTOUCH_LOOK_SAMPLES;
+  _atLook[i] = t;
+  _afLookAtX[i] = _fLookCumX;
+  _afLookAtY[i] = _fLookCumY;
+  _ctLook++;
+  _bLookFresh = 1;
+}
+
+// The look the game takes this frame, at time now (under _lock): the total
+// as it stood _tLookLag ago, less what was taken before
+static void IOSTouch_LookTake(double now, float *pfDX, float *pfDY)
+{
+  double x = _fLookCumX, y = _fLookCumY;
+  if (_ctLook > 0) {
+    const int last = (_iLookFirst + _ctLook - 1) % IOSTOUCH_LOOK_SAMPLES;
+    // the lag: enough that the newest touch is usually still ahead of it
+    if (_bLookFresh) {
+      double lag = now - _atLook[last] + IOSTOUCH_LOOK_LAG_SPARE;
+      if (lag > IOSTOUCH_LOOK_LAG_MAX) lag = IOSTOUCH_LOOK_LAG_MAX;
+      if (lag > _tLookLag) _tLookLag = lag;
+    }
+    double t = now - _tLookLag;
+    if (t < _tLookTaken) t = _tLookTaken; // (never back in time)
+    _tLookTaken = t;
+    if (t < _atLook[last]) {
+      int k = 0;
+      while (k + 1 < _ctLook && _atLook[(_iLookFirst + k + 1) % IOSTOUCH_LOOK_SAMPLES] <= t) k++;
+      const int a = (_iLookFirst + k) % IOSTOUCH_LOOK_SAMPLES;
+      if (t <= _atLook[a]) {
+        x = _afLookAtX[a];
+        y = _afLookAtY[a];
+      }
+      else {
+        const int b = (a + 1) % IOSTOUCH_LOOK_SAMPLES;
+        const double f = (t - _atLook[a]) / (_atLook[b] - _atLook[a]);
+        x = _afLookAtX[a] + (_afLookAtX[b] - _afLookAtX[a]) * f;
+        y = _afLookAtY[a] + (_afLookAtY[b] - _afLookAtY[a]) * f;
+      }
+    }
+    else {
+      _ctLook = 1; // (all of it taken: only the newest kept)
+      _iLookFirst = last;
+    }
+  }
+  _bLookFresh = 0;
+  _tLookLag -= IOSTOUCH_LOOK_LAG_FALL;
+  if (_tLookLag < 0.0) _tLookLag = 0.0;
+  *pfDX = (float)(x - _fLookOutX);
+  *pfDY = (float)(y - _fLookOutY);
+  _fLookOutX = x;
+  _fLookOutY = y;
+}
 
 // Sets the game buttons held by touches. ulLifted: buttons whose touch just
 // lifted (not cancelled) -- if no tick saw them held, it was a tap quicker
@@ -345,7 +449,7 @@ static void IOSTouch_ResetShared(int bReading)
   memset(_aPulseGap, 0, sizeof(_aPulseGap));
   _fMoveX = _fMoveY = 0.0f;
   _bMoveRun = 0;
-  _fLookX = _fLookY = 0.0f;
+  IOSTouch_LookDrop();
   _fGyroYaw = _fGyroPitch = 0.0f;
   _iPickPending = _iPickReads = _iPickNow = _bPickGap = 0;
   os_unfair_lock_unlock(&_lock);
@@ -371,7 +475,7 @@ static void IOSTouch_SharedWheelOpened(void)
   for (int i = 0; i < IOSTOUCH_NUMBUTTONS; i++) {
     if ((1u << i) & (IOSTOUCH_NEXTWEAPON | IOSTOUCH_PREVWEAPON)) _aPulseQueue[i] = 0;
   }
-  _fLookX = _fLookY = 0.0f;
+  IOSTouch_LookDrop();
   _fGyroYaw = _fGyroPitch = 0.0f;
   os_unfair_lock_unlock(&_lock);
 }
@@ -2596,10 +2700,7 @@ static int IOSTouch_TouchMoved(const void *touch, double x, double y)
     const float fLookX = (float)(x - s->x) * IOSTOUCH_LOOK_SCALE_X * _fLookScale;
     const float fLookY = (float)(y - s->y) * IOSTOUCH_LOOK_SCALE_Y * _fLookScale;
     os_unfair_lock_lock(&_lock);
-    if (_bReading) {
-      _fLookX += fLookX;
-      _fLookY += fLookY;
-    }
+    if (_bReading) IOSTouch_LookAdd(fLookX, fLookY, _tTouchStamp > 0.0 ? _tTouchStamp : CACurrentMediaTime());
     os_unfair_lock_unlock(&_lock);
   }
   // SAVE, LOAD: a finger that leaves the button, even between two
@@ -3283,9 +3384,11 @@ void IOSTouch_ReadMove(float *pfMoveX, float *pfMoveY)
 void IOSTouch_TakeLook(float *pfDX, float *pfDY)
 {
   os_unfair_lock_lock(&_lock);
-  *pfDX = _bReading ? _fLookX : 0.0f;
-  *pfDY = _bReading ? _fLookY : 0.0f;
-  _fLookX = _fLookY = 0.0f;
+  if (_bReading) IOSTouch_LookTake(CACurrentMediaTime(), pfDX, pfDY);
+  else {
+    IOSTouch_LookDrop();
+    *pfDX = *pfDY = 0.0f;
+  }
   os_unfair_lock_unlock(&_lock);
 }
 
@@ -4611,7 +4714,9 @@ static void IOSTouch_DrawWheelTheme(const IOSTouchWheelTheme *t, CGPoint c, doub
       IOSTouch_TouchPassed((__bridge const void *)t, q.x, q.y);
     }
     CGPoint p = [t locationInView:self];
+    _tTouchStamp = t.timestamp; // (the look goes by the touch's own time)
     if (IOSTouch_TouchMoved((__bridge const void *)t, p.x, p.y)) bLooksChanged = 1;
+    _tTouchStamp = 0.0;
   }
   if (bLooksChanged) [self refreshButtonLooks];
   [self refreshStick];

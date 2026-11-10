@@ -37,7 +37,8 @@ public:
 	VulkanImageView* GetImageView(int index) { return views[index].get(); }
 
 	int AcquireImage(VulkanSemaphore* semaphore = nullptr, VulkanFence* fence = nullptr);
-	void QueuePresent(int imageIndex, VulkanSemaphore* semaphore = nullptr);
+	void QueuePresent(int imageIndex, VulkanSemaphore* semaphore = nullptr, const void* presentNext = nullptr); // (Added: presentNext, chained to VkPresentInfoKHR)
+	VkSwapchainKHR Handle() const { return swapchain; } // (Added)
 
 private:
 	void SelectFormat(const VulkanSurfaceCapabilities& caps, bool hdr);
