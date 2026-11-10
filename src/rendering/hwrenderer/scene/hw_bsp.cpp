@@ -40,6 +40,9 @@
 #include <immintrin.h>
 #endif // ARCH_IA32
 
+#ifdef DOOM_TOUCH
+#include "../../../../ios/IOSCamera.h" // Added (iOS touch): the CAMERA
+#endif
 CVAR(Bool, gl_multithread, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 
 EXTERN_CVAR(Float, r_actorspriteshadowdist)
@@ -674,6 +677,22 @@ void HWDrawInfo::RenderThings(subsector_t * sub, sector_t * sector)
 			sprite.Process(this, thing, sector, in_area, false);
 		}
 	}
+
+#ifdef DOOM_TOUCH
+	// Added (iOS touch): the CAMERA's people posed in this sector (drawn
+	// here, never linked here)
+	{
+		struct Ctx { HWDrawInfo *di; sector_t *sector; area_t in_area; } ctx = { this, sector, in_area };
+		IOSCamera_ThingsIn(sec, [](AActor *thing, void *pv)
+		{
+			Ctx *c = (Ctx *)pv;
+			if (thing->validcount == validcount) return;
+			thing->validcount = validcount;
+			HWSprite sprite;
+			sprite.Process(c->di, thing, c->sector, c->in_area, false);
+		}, &ctx);
+	}
+#endif
 
 	for (msecnode_t *node = sec->sectorportal_thinglist; node; node = node->m_snext)
 	{

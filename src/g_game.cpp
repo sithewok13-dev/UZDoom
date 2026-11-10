@@ -699,7 +699,12 @@ void G_BuildTiccmd (usercmd_t *cmd)
 #ifdef DOOM_TOUCH
 	// Added (iOS touch): the touch controls' stick (as a joystick's axes), their
 	// buttons, NEXT WPN / PREV WPN and the weapon wheel's pick
-	IOSGame_Ticcmd(&axis_forward, &axis_side, &cmd->buttons);
+	// (the touch stick walks, or runs on its run marker or with Always Run)
+	const int iosRun = IOSGame_Ticcmd(&axis_forward, &axis_side, &cmd->buttons);
+	if (iosRun > 0) cmd->buttons |= BT_RUN;
+	const int analogSpeed = iosRun >= 0 ? iosRun : (cl_analog_run | speed);
+#else
+	const int analogSpeed = cl_analog_run | speed;
 #endif
 
 	bool ignore_yaw = false;
@@ -754,8 +759,8 @@ void G_BuildTiccmd (usercmd_t *cmd)
 		ignore_pitch = false;
 	}
 
-	auto i_axis_side    = joyint(axis_side * sidemove[cl_analog_run | speed]);
-	auto i_axis_forward = joyint(axis_forward * forwardmove[cl_analog_run | speed]);
+	auto i_axis_side    = joyint(axis_side * sidemove[analogSpeed]);
+	auto i_axis_forward = joyint(axis_forward * forwardmove[analogSpeed]);
 	auto i_axis_fly     = joyint(axis_up * 2048);
 	auto i_axis_pitch   = joyint(axis_pitch * ANALOG_LOOK_BASE * cl_analog_sensitivity_pitch);
 	auto i_axis_yaw     = joyint(axis_yaw * -ANALOG_LOOK_BASE * cl_analog_sensitivity_yaw);

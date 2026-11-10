@@ -51,6 +51,9 @@ class VulkanRenderDevice : public SystemBaseFrameBuffer
 
 
 public:
+#ifdef DOOM_TOUCH
+	int IOSReadFrame(int w, int h, unsigned char* p) override; // Added (iOS touch): the CAMERA's frame grabs
+#endif
 	std::shared_ptr<VulkanDevice> device;
 
 	VkCommandBufferManager* GetCommands() { return mCommands.get(); }

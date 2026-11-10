@@ -62,6 +62,9 @@ void P_RunClientSideLogic();
 
 EXTERN_CVAR (Int, disableautosave)
 EXTERN_CVAR (Int, autosavecount)
+#ifdef DOOM_TOUCH
+#include "../ios/IOSCamera.h" // Added (iOS touch): the CAMERA
+#endif
 EXTERN_CVAR (Bool, cl_capfps)
 EXTERN_CVAR (Bool, vid_vsync)
 EXTERN_CVAR (Int, vid_maxfps)
@@ -2204,6 +2207,12 @@ void TryRunTics()
 	bool doWait = (cl_capfps || pauseext || (!netgame && r_NoInterpolate && !M_IsAnimated()));
 	if (vid_dontdowait && (vid_maxfps > 0 || vid_vsync))
 		doWait = false;
+#ifdef DOOM_TOUCH
+	// Added (iOS touch): the CAMERA's Action Freeze holds the game still, but
+	// its camera moves with the fingers: every frame drawn, not one per tic
+	if (IOSCamera_IsFrozen())
+		doWait = false;
+#endif
 	if (!netgame && !AppActive && vid_lowerinbackground)
 		doWait = true;
 

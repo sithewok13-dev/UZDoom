@@ -33,6 +33,9 @@
 		<integer>1</integer>
 		<integer>2</integer>
 	</array>
+	<!-- CAMERA's photos go to Photos (add only); without it, to Files > DOOM > Screenshots -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>The CAMERA button saves your photos, bursts and selfies of the game to Photos.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>

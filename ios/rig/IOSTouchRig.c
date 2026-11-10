@@ -103,10 +103,13 @@ void IOSTouch_Hide(void)
 // ---------------------------------------------------------------- the commands
 
 static const struct { const char *name; int button; } _aRigNames[] = {
-  { "FIRE", BTN_FIRE }, { "CROUCH", BTN_CROUCH }, { "USE", BTN_USE }, { "MAP", BTN_MAP }, { "JUMP", BTN_JUMP },
-  { "NEXTWPN", BTN_NEXTWPN }, { "PREVWPN", BTN_PREVWPN }, { "QUICKSAVE", BTN_QUICKSAVE }, { "QUICKLOAD", BTN_QUICKLOAD },
-  { "MENU", BTN_MENU }, { "RESUME", BTN_RESUME }, { "TRAYSENS", BTN_TRAYSENS }, { "TRAYGYRO", BTN_TRAYGYRO },
-  { "TRAYFPS", BTN_TRAYFPS }, { "TRAYLEVEL", BTN_TRAYLEVEL }, { "TRAYNOCLIP", BTN_TRAYNOCLIP }, { "TRAYKEYS", BTN_TRAYKEYS },
+  { "FIRE", BTN_FIRE }, { "CROUCH", BTN_CROUCH }, { "USE", BTN_USE }, { "JUMP", BTN_JUMP },
+  { "NEXTWPN", BTN_NEXTWPN }, { "PREVWPN", BTN_PREVWPN }, { "MAP", BTN_MAP }, { "CHEAT", BTN_CHEAT }, { "CAMERA", BTN_CAMERA },
+  { "SAVE", BTN_QUICKSAVE }, { "LOAD", BTN_QUICKLOAD }, { "QUICKSAVE", BTN_QUICKSAVE }, { "QUICKLOAD", BTN_QUICKLOAD },
+  { "MENU", BTN_MENU }, { "RESUME", BTN_RESUME }, { "TRAYLOOK", BTN_TRAYLOOK }, { "TRAYRUN", BTN_TRAYRUN },
+  { "TRAYSENS", BTN_TRAYSENS }, { "TRAYGYRO", BTN_TRAYGYRO }, { "TRAYOPACITY", BTN_TRAYOPACITY }, { "TRAYFPS", BTN_TRAYFPS },
+  { "TRAYCAM", BTN_TRAYCAM }, { "TRAYCHEAT", BTN_TRAYCHEAT }, { "TRAYLEVEL", BTN_TRAYLEVEL }, { "TRAYNOCLIP", BTN_TRAYNOCLIP },
+  { "TRAYGAMES", BTN_TRAYGAMES }, { "TRAYKEYS", BTN_TRAYKEYS },
 };
 
 // The fingers: each a touch's identity (only its address is used)
@@ -171,9 +174,11 @@ static const char *IOSTouchRig_ButtonName(int b)
 
 static void IOSTouchRig_State(void)
 {
-  printf("rig: state mode %s reading %d tray %d cheat %d levellist %d wheel %d tapmode %d hot %d holds %d fps %d/%d gyro %d sens %.1f\n",
-         _astrModes[_iMode], _bReading, _bTrayOpen, _bCheatOn, _bLevelListOpen, _bWheelOpen, _bWheelTapMode,
-         IOSTouch_WheelHot(), IOSTouch_HoldsGame(), _bShowFps, _iFpsShown, _iGyroMode, (double)_afGyroSens[_iGyroSens]);
+  printf("rig: state mode %s reading %d tray %d cheat %d/%d levellist %d wheel %d tapmode %d hot %d holds %d fps %d/%d maxfps %d gyro %d sens %.1f"
+         " look %.2f opacity %.2f/%d run %d/%d marker %d camera %d trayplaced %d\n",
+         _astrModes[_iMode], _bReading, _bTrayOpen, _bShowCheat, _bCheatOn, _bLevelListOpen, _bWheelOpen, _bWheelTapMode,
+         IOSTouch_WheelHot(), IOSTouch_HoldsGame(), _bShowFps, _iFpsShown, _iMaxFps, _iGyroMode, (double)_afGyroSens[_iGyroSens],
+         (double)_fLookScale, (double)_fOpacity, _bOpacityOpen, _bMoveRun, _hud.bRunOn, _bRunMarker, _bShowCamera, _bTrayLevelPlaced);
   printf("rig: shown");
   for (int i = 0; i < IOSTOUCH_NUM_BUTTONS; i++) {
     if (IOSTouch_IsShown(i)) printf(" %s(%.0f,%.0f)", IOSTouchRig_ButtonName(i), _aButtons[i].x, _aButtons[i].y);

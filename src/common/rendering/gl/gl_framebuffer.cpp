@@ -52,6 +52,9 @@
 
 EXTERN_CVAR (Bool, vid_vsync)
 EXTERN_CVAR(Int, gl_tonemap)
+#ifdef DOOM_TOUCH
+extern "C" void IOSCamera_AfterHud(void); // Added (iOS touch): ios/IOSCamera.cpp
+#endif
 EXTERN_CVAR(Bool, cl_capfps)
 EXTERN_CVAR(Int, gl_pipeline_depth);
 
@@ -185,6 +188,10 @@ void OpenGLFrameBuffer::Update()
 	GLRenderer->Flush();
 	Flush3D.Unclock();
 
+#ifdef DOOM_TOUCH
+	// Added (iOS touch): everything drawn, the CAMERA's photo with the HUD
+	IOSCamera_AfterHud();
+#endif
 	Swap();
 	Super::Update();
 }
@@ -202,6 +209,25 @@ void OpenGLFrameBuffer::CopyScreenToBuffer(int width, int height, uint8_t* scr)
 	glFinish();
 	glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, scr);
 }
+
+#ifdef DOOM_TOUCH
+// Added (iOS touch): the CAMERA's frame grabs on OpenGL (the Linux rig):
+// the frame drawn so far, through the back buffer, as RGBA
+int OpenGLFrameBuffer::IOSReadFrame(int w, int h, unsigned char* p)
+{
+	if (w <= 0 || h <= 0 || w > GetWidth() || h > GetHeight()) return 0;
+	IntRect bounds;
+	bounds.left = 0;
+	bounds.top = 0;
+	bounds.width = w;
+	bounds.height = h;
+	GLRenderer->CopyToBackbuffer(&bounds, false);
+	glFinish();
+	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+	glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, p);
+	return 1;
+}
+#endif
 
 //===========================================================================
 //

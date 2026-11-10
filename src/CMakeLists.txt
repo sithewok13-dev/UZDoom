@@ -1529,14 +1529,18 @@ endif()
 if( DOOM_TOUCH )
 	# The touch controls: the overlay (on iOS, Objective-C with ARC; in the
 	# Linux rig, its plain C core through the rig's file) and the game side
-	set( TOUCH_SOURCES ../ios/IOSGame.cpp )
+	# (and the CAMERA: IOSCamera.cpp, IOSCapture.cpp; its photos are saved
+	# by IOSPhotos.mm on iOS, by rig/IOSPhotosRig.cpp on the rig)
+	set( TOUCH_SOURCES ../ios/IOSGame.cpp ../ios/IOSCamera.cpp ../ios/IOSCapture.cpp )
 	if( DOOM_IOS )
-		list( APPEND TOUCH_SOURCES ../ios/IOSTouch.m )
+		list( APPEND TOUCH_SOURCES ../ios/IOSTouch.m ../ios/IOSPhotos.mm )
 		# (built as Objective-C by the C compiler, clang)
 		set_source_files_properties( ../ios/IOSTouch.m PROPERTIES COMPILE_FLAGS "-x objective-c -fobjc-arc" )
+		set_source_files_properties( ../ios/IOSPhotos.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc" )
 	else()
-		list( APPEND TOUCH_SOURCES ${DOOM_TOUCH_RIG_SOURCE} )
+		list( APPEND TOUCH_SOURCES ${DOOM_TOUCH_RIG_SOURCE} ../ios/rig/IOSPhotosRig.cpp )
 		set_source_files_properties( ${DOOM_TOUCH_RIG_SOURCE} PROPERTIES COMPILE_FLAGS "-DIOSTOUCH_RIG -I${CMAKE_SOURCE_DIR}/ios" )
+		set_source_files_properties( ../ios/rig/IOSPhotosRig.cpp PROPERTIES COMPILE_FLAGS "-I${CMAKE_SOURCE_DIR}/ios" )
 	endif()
 	target_sources( zdoom PRIVATE ${TOUCH_SOURCES} )
 	set_source_files_properties( ${TOUCH_SOURCES} PROPERTIES SKIP_PRECOMPILE_HEADERS TRUE )
@@ -1546,7 +1550,7 @@ if( DOOM_IOS )
 	# What SDL2, OpenAL Soft, MoltenVK's loader and the overlay need on iOS
 	set( IOS_FRAMEWORKS UIKit Foundation OpenGLES QuartzCore CoreGraphics CoreFoundation
 		AVFoundation AudioToolbox CoreAudio CoreMotion GameController Metal CoreHaptics CoreBluetooth
-		UserNotifications CoreText )
+		UserNotifications CoreText Photos ImageIO )
 	foreach( fw ${IOS_FRAMEWORKS} )
 		target_link_libraries( zdoom "-framework ${fw}" )
 	endforeach()

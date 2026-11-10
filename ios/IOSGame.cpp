@@ -17,6 +17,8 @@
 #include <math.h>
 
 #include "IOSGame.h"
+#include "IOSCamera.h"
+#include "IOSPicker.h"
 
 #include <SDL.h>
 SDL_Window* IOS_GetGameWindow(); // sdlglvideo.cpp: the game's window (OpenGL ES or Vulkan)
@@ -46,6 +48,10 @@ SDL_Window* IOS_GetGameWindow(); // sdlglvideo.cpp: the game's window (OpenGL ES
 #include "i_interface.h"
 #include "vm.h"
 #include "actorinlines.h"
+#include "s_sound.h"
+#include "am_map.h"
+#include "m_misc.h"
+#include "v_video.h"
 
 EXTERN_CVAR(Float, m_sensitivity_x)
 EXTERN_CVAR(Float, m_sensitivity_y)
@@ -53,6 +59,7 @@ EXTERN_CVAR(Bool, invertmouse)
 EXTERN_CVAR(Bool, invertmousex)
 EXTERN_CVAR(Int, quicksaverotationcount)
 EXTERN_CVAR(Int, quicksavenum)
+EXTERN_CVAR(Bool, cl_run)
 
 extern const AActor* SendItemUse; // g_game.cpp: the item to use in the next ticcmd ("use <class>")
 extern int chatmodeon;
@@ -61,6 +68,13 @@ extern int chatmodeon;
 // typing a message), the console over it, the game paused with the pause
 // key, or nothing (menus, intermissions, the finale, the title map, demos,
 // loading)
+// "Switch game" is over the game (GAMES in MENU's tray): it holds still
+static bool switchingGame = false;
+static void SwitchClosed(int bPicked)
+{
+	switchingGame = false;
+}
+
 static int TouchMode()
 {
 	// (the app in the background: nothing, so the weapon wheel or the level
@@ -176,9 +190,23 @@ static void CheatGive()
 	C_DoCommand("give all");
 }
 
+// The cheat keeps every ammo the player has full (as "give all" left it)
+static void CheatAmmoFull()
+{
+	auto p = Player();
+	if (!p || p->health <= 0) return;
+	for (AActor* item = p->mo->Inventory; item; item = item->Inventory)
+	{
+		if (!item->IsKindOf(NAME_Ammo)) continue;
+		const int max = item->IntVar(NAME_MaxAmount);
+		if (max > 0 && item->IntVar(NAME_Amount) < max) item->IntVar(NAME_Amount) = max;
+	}
+}
+
 static void CheatFrame()
 {
 	if (!cheatOn || !CheatAllowed()) return;
+	if (cheatGiveIn < 0) CheatAmmoFull();
 	if (cheatGiveIn > 0 && --cheatGiveIn == 0)
 	{
 		cheatGiveIn = -1;
@@ -197,7 +225,7 @@ CCMD(sithewok)
 	if (want != (IOSTouch_CheatOn() != 0))
 	{
 		IOSTouch_CheatTyped();
-		Printf("sithewok: %s\n", IOSTouch_CheatOn() ? "on (god mode, everything given; LEVEL and NOCLIP in MENU's tray)" :
+		Printf("sithewok: %s\n", IOSTouch_CheatOn() ? "on (god mode, everything given, ammo kept full; NOCLIP in MENU's tray)" :
 			want ? (CheatRefusal() ? CheatRefusal() : "not now") : "off (god mode off)");
 	}
 }
@@ -358,8 +386,11 @@ static FGameTexture* StateTexture(FState* st)
 	return id.isValid() ? TexMan.GetGameTexture(id) : nullptr;
 }
 
-static FGameTexture* WeaponTexture(PClassActor* cls)
+// (pbHand: it is the first-person sprite, an arm reaching in from the
+// bottom left, as DOOM's fist: MakeIcon keeps its hand end)
+static FGameTexture* WeaponTexture(PClassActor* cls, bool* pbHand = nullptr)
 {
+	if (pbHand) *pbHand = false;
 	auto def = GetDefaultByType(cls);
 	if (!def) return nullptr;
 	FGameTexture* tex = StateTexture(def->SpawnState);
@@ -368,12 +399,15 @@ static FGameTexture* WeaponTexture(PClassActor* cls)
 		FTextureID icon = def->TextureIDVar(NAME_Icon);
 		if (icon.isValid()) tex = TexMan.GetGameTexture(icon);
 	}
-	if (!tex) tex = StateTexture(def->FindState(NAME_Ready));
+	// no pickup or icon (DOOM's fist): the first frame of its punch, the fist
+	// clenched (PUNGB0), else its Ready frame (PUNGA0, the open hand)
+	if (!tex && (tex = StateTexture(def->FindState(NAME_Fire))) != nullptr && pbHand) *pbHand = true;
+	if (!tex && (tex = StateTexture(def->FindState(NAME_Ready))) != nullptr && pbHand) *pbHand = true;
 	if (tex && tex->isValid() && tex->GetTexture() && tex->GetTexelWidth() > 0 && tex->GetTexelHeight() > 0) return tex;
 	return nullptr;
 }
 
-static bool MakeIcon(FGameTexture* tex, TArray<uint8_t>& out, int& ow, int& oh)
+static bool MakeIcon(FGameTexture* tex, TArray<uint8_t>& out, int& ow, int& oh, bool bHand = false)
 {
 	if (!tex) return false;
 	FBitmap bmp = tex->GetTexture()->GetBgraBitmap(nullptr);
@@ -390,6 +424,17 @@ static bool MakeIcon(FGameTexture* tex, TArray<uint8_t>& out, int& ow, int& oh)
 				y0 = min(y0, y); y1 = max(y1, y);
 			}
 	if (x1 < x0 || y1 < y0) return false;
+	// (an arm reaching in: its hand end, at most 1.6 times as wide as high,
+	// cropped again to what isn't see-through there)
+	if (bHand && x1 - x0 + 1 > (y1 - y0 + 1) * 8 / 5)
+	{
+		x0 = x1 + 1 - (y1 - y0 + 1) * 8 / 5;
+		int ny0 = h, ny1 = -1;
+		for (int y = y0; y <= y1; y++)
+			for (int x = x0; x <= x1; x++)
+				if (px[y * pitch + x * 4 + 3] > 8) { ny0 = min(ny0, y); ny1 = max(ny1, y); }
+		if (ny1 >= ny0) { y0 = ny0; y1 = ny1; }
+	}
 	const int cw = x1 - x0 + 1, ch = y1 - y0 + 1, big = max(cw, ch);
 	if (big <= IOSTOUCH_ICON_MAX)
 	{
@@ -444,9 +489,40 @@ static void FeedIcons()
 	for (int i = 0; i < IOSTOUCH_WPN_MAX; i++)
 	{
 		if (!(wanted & (1u << i))) continue;
-		if (i < wheelCount && MakeIcon(WeaponTexture(wheelClasses[i]), px, w, h)) IOSTouch_SetWeaponIcon(i, px.Data(), w, h);
+		bool hand = false;
+		FGameTexture* tex = i < wheelCount ? WeaponTexture(wheelClasses[i], &hand) : nullptr;
+		if (tex && MakeIcon(tex, px, w, h, hand)) IOSTouch_SetWeaponIcon(i, px.Data(), w, h);
 		else IOSTouch_SetWeaponIcon(i, nullptr, 0, 0); // (its name shows)
 	}
+}
+
+// CHEAT's picture: the doomguy's grinning god-mode face from the status bar
+// of the player's own data (STFGOD0; else his plain face, STFST01), made
+// as the wheel's icons are; asked once
+static void FeedCheatIcon()
+{
+	if (!IOSTouch_WantsCheatIcon()) return;
+	static const char* const names[] = { "STFGOD0", "STFST01", "STFST00" };
+	for (auto name : names)
+	{
+		FTextureID id = TexMan.CheckForTexture(name, ETextureType::Any);
+		if (!id.isValid()) continue;
+		TArray<uint8_t> px;
+		int w = 0, h = 0;
+		if (MakeIcon(TexMan.GetGameTexture(id), px, w, h))
+		{
+			IOSTouch_SetCheatIcon(px.Data(), w, h);
+			return;
+		}
+	}
+	IOSTouch_SetCheatIcon(nullptr, 0, 0); // (CHEAT says CHEAT)
+}
+
+// The cheat coming on: the game's power-up pickup sound (DSGETPOW, from the
+// player's own data); off is silent
+static void CheatSound()
+{
+	S_Sound(CHAN_VOICE, CHANF_UI, "misc/p_pkup", 1.f, ATTN_NONE);
 }
 
 //---------------------------------------------------------------------------
@@ -495,7 +571,7 @@ static bool QuickLoad()
 	auto name = NewestQuickSave();
 	if (name.IsEmpty())
 	{
-		IOSTouch_ShowMessage("No quick save yet (hold QUICK SAVE)", 3.0);
+		IOSTouch_ShowMessage("No quick save yet (hold SAVE)", 3.0);
 		return false;
 	}
 	G_LoadGame(name.GetChars());
@@ -545,6 +621,7 @@ static unsigned int framesDrawn = 0;
 void IOSGame_LevelStarted()
 {
 	levelStarts++;
+	IOSCamera_Abort(); // (a level started or loaded: the CAMERA puts everything back first)
 }
 
 // The look, as the mouse moved: PostMouseMove's sums (UZDoom's mouse
@@ -601,7 +678,10 @@ void IOSGame_Frame()
 		hud.bCanJump = CanJump();
 		hud.bCanCrouch = CanCrouch();
 		hud.bNoclip = (p->cheats & (CF_NOCLIP | CF_NOCLIP2)) != 0;
+		hud.bAutomap = automapactive;
 	}
+	hud.bRunOn = cl_run;
+	hud.bGames = IOSPicker_GameCount() > 1;
 	hud.bNoSaves = netgame; // (QUICK SAVE says when it can't save; QUICK LOAD works dead too)
 	hud.bCheatAllowed = CheatAllowed();
 	hud.strCheatRefusal = hud.bCheatAllowed ? nullptr : CheatRefusal();
@@ -610,7 +690,11 @@ void IOSGame_Frame()
 	hud.ctLevels = levelPick ? cheatLevels.Size() : 0;
 	hud.uWorld = levelStarts;
 	IOSTouch_SetWeapons(&wpn);
-	if (mode != IOSTOUCH_HIDDEN) FeedIcons();
+	if (mode != IOSTOUCH_HIDDEN)
+	{
+		FeedIcons();
+		FeedCheatIcon();
+	}
 
 	const int req = IOSTouch_Update(IOS_GetGameWindow(), mode, &hud, framesDrawn);
 
@@ -620,8 +704,28 @@ void IOSGame_Frame()
 		else PostKey(KEY_ESCAPE);
 	}
 	if (req & IOSTOUCH_REQ_CONSOLE) C_ToggleConsole();
+	// GAMES: "Switch game" over the game, held still behind it (Cancel: back)
+	if ((req & IOSTOUCH_REQ_GAMES) && !switchingGame)
+	{
+		switchingGame = true;
+#ifdef DOOM_IOS
+		IOSPicker_PresentSwitch(SwitchClosed);
+#else
+		Printf("rig: Switch game (no picker on the rig)\n");
+		SwitchClosed(0);
+#endif
+	}
 	if ((req & IOSTOUCH_REQ_QUICKSAVE) && mode == IOSTOUCH_GAMEPLAY) QuickSave();
 	else if ((req & IOSTOUCH_REQ_QUICKLOAD) && mode == IOSTOUCH_GAMEPLAY) QuickLoad();
+	// SAVE / LOAD tapped: the game's Save Game / Load Game menus
+	if ((req & IOSTOUCH_REQ_SAVEMENU) && mode == IOSTOUCH_GAMEPLAY) C_DoCommand("menu_save");
+	else if ((req & IOSTOUCH_REQ_LOADMENU) && mode == IOSTOUCH_GAMEPLAY) C_DoCommand("menu_load");
+	// the tray's ALWAYS RUN: DOOM's own Always Run
+	if (req & IOSTOUCH_REQ_RUN)
+	{
+		cl_run = !cl_run;
+		IOSTouch_ShowMessage(cl_run ? "Always Run on" : "Always Run off: slide up onto the stick's ^^ to run", 2.5);
+	}
 	if ((req & IOSTOUCH_REQ_RESUME) && paused) C_DoCommand("pause");
 	if ((req & IOSTOUCH_REQ_MAP) && mode == IOSTOUCH_GAMEPLAY) C_DoCommand("togglemap");
 	// (noclip before the cheat goes off)
@@ -629,6 +733,7 @@ void IOSGame_Frame()
 	if (req & IOSTOUCH_REQ_CHEATON)
 	{
 		cheatOn = true;
+		CheatSound();
 		if (CheatAllowed())
 		{
 			CheatGive();
@@ -650,9 +755,12 @@ void IOSGame_Frame()
 		const int i = IOSTouch_TakeLevelPick();
 		if (i >= 1 && i <= (int)cheatLevels.Size() && gameaction == ga_nothing)
 		{
-			// as "map <lump>" does: straight there, no intermission
+			// as "map <lump>" does: straight there, no intermission, as a new
+			// game (without the cheat: the pistol, as the map starts; with it,
+			// everything is given again)
 			Printf(PRINT_NONOTIFY, "iOS: level %d picked: %s\n", i, cheatLevels[i - 1].map.GetChars());
 			C_DoCommand(FStringf("map %s", cheatLevels[i - 1].map.GetChars()).GetChars());
+			IOSTouch_ShowMessage(FStringf("Going to %s%s", cheatLevels[i - 1].name.GetChars(), cheatOn ? "" : ": a fresh start").GetChars(), 3.0);
 		}
 		else
 		{
@@ -661,6 +769,8 @@ void IOSGame_Frame()
 		}
 	}
 	CheatFrame();
+	// the CAMERA: a level being played, single player, nothing over it
+	IOSCamera_Frame(mode == IOSTOUCH_GAMEPLAY && !netgame && !switchingGame);
 
 	// The look (as the mouse: dropped by the game while it is paused or the
 	// menu or console is up) and tilt aiming, taken every frame so nothing
@@ -668,7 +778,7 @@ void IOSGame_Frame()
 	float dx, dy, yaw, pitch;
 	IOSTouch_TakeLook(&dx, &dy);
 	IOSTouch_TakeGyro(&yaw, &pitch);
-	if (mode == IOSTOUCH_GAMEPLAY && !paused && !IOSTouch_HoldsGame())
+	if (mode == IOSTOUCH_GAMEPLAY && !paused && !IOSGame_HoldsGame())
 	{
 		FeedLook(dx, dy);
 		FeedGyro(yaw, pitch);
@@ -684,13 +794,17 @@ void IOSGame_Frame()
 static unsigned int ulLastButtons = 0;
 static int iLastPick = -1;
 
-void IOSGame_Ticcmd(float* pfAxisForward, float* pfAxisSide, uint32_t* pulButtons)
+int IOSGame_Ticcmd(float* pfAxisForward, float* pfAxisSide, uint32_t* pulButtons)
 {
 	IOSTouchInput in;
 	IOSTouch_ReadInput(&in);
 	// the stick, as a joystick's (forward +, the side axis + to the left)
 	*pfAxisForward = clamp(*pfAxisForward + in.fMoveY, -1.f, 1.f);
 	*pfAxisSide = clamp(*pfAxisSide - in.fMoveX, -1.f, 1.f);
+	// how fast the stick goes: running on the run marker or with Always Run
+	// (cl_run), else walking (whatever cl_analog_run says for a pad's stick)
+	int run = -1;
+	if (in.fMoveX != 0.f || in.fMoveY != 0.f) run = (in.bRun || cl_run) ? 1 : 0;
 	const unsigned b = in.ulButtons;
 	if (b & IOSTOUCH_FIRE) *pulButtons |= BT_ATTACK;
 	if (b & IOSTOUCH_USE) *pulButtons |= BT_USE;
@@ -705,11 +819,30 @@ void IOSGame_Ticcmd(float* pfAxisForward, float* pfAxisSide, uint32_t* pulButton
 	// the wheel's pick: once (it is reported for two tics)
 	if (in.iSelectWeapon >= 0 && in.iSelectWeapon != iLastPick) PickWeapon(in.iSelectWeapon);
 	iLastPick = in.iSelectWeapon;
+	return run;
 }
 
 bool IOSGame_HoldsGame()
 {
-	return IOSTouch_HoldsGame() != 0;
+	return IOSTouch_HoldsGame() != 0 || IOSCamera_HoldsGame() || switchingGame;
+}
+
+// The settings written now: "Switch game" closes the app (ios/IOSPicker.mm)
+extern "C" void IOSGame_WriteConfig(void)
+{
+	M_SaveDefaults(nullptr);
+}
+
+// The picture's place in the window (IOSPhotos: the buttons drawn over the
+// HUD photo): the whole screen, in its pixels (x, y, w, h, and the window's
+// width and height)
+extern "C" int IOSGame_LastPictureRect(int r[6])
+{
+	if (!screen) return 0;
+	r[0] = r[1] = 0;
+	r[2] = r[4] = screen->GetWidth();
+	r[3] = r[5] = screen->GetHeight();
+	return 1;
 }
 
 void IOSGame_HudFrame(double w, double h, double* pFrame)
@@ -723,6 +856,28 @@ void IOSGame_HudFrame(double w, double h, double* pFrame)
 }
 
 #ifndef DOOM_IOS
+// (the rig has no picker: GAMES shows, as with two games found, unless
+// IOSRIG_GAMES says how many)
+extern "C" int IOSPicker_GameCount(void)
+{
+	const char* n = getenv("IOSRIG_GAMES");
+	return n ? atoi(n) : 2;
+}
+
+// The CAMERA's commands: ios_cam photo | selfie | burst | freeze | cinema |
+// end | orbit y p | pan r d | zoom f | kinds n | selfies n | hash | status |
+// gather n
+CCMD(ios_cam)
+{
+	FString cmd;
+	for (int i = 1; i < argv.argc(); i++)
+	{
+		if (i > 1) cmd += ' ';
+		cmd += argv[i];
+	}
+	IOSCamera_RigCommand(cmd.GetChars());
+}
+
 //---------------------------------------------------------------------------
 //
 // The Linux test rig's own (DOOM_TOUCH_RIG_SOURCE, ios/rig/IOSTouchRig.c):
@@ -818,7 +973,9 @@ CCMD(ios_rigicons)
 	{
 		TArray<uint8_t> px;
 		int w = 0, h = 0;
-		if (!MakeIcon(WeaponTexture(wheelClasses[i]), px, w, h)) continue;
+		bool hand = false;
+		FGameTexture* tex = WeaponTexture(wheelClasses[i], &hand);
+		if (!MakeIcon(tex, px, w, h, hand)) continue;
 		FILE* f = fopen(FStringf("%s/w%02d.rgba", argv[1], i).GetChars(), "wb");
 		if (!f) continue;
 		int32_t wh[2] = { w, h };

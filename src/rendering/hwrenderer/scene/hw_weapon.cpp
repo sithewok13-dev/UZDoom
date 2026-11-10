@@ -43,6 +43,9 @@
 
 EXTERN_CVAR(Float, transsouls)
 EXTERN_CVAR(Int, gl_fuzztype)
+#ifdef DOOM_TOUCH
+#include "../../../../ios/IOSCamera.h" // Added (iOS touch): the CAMERA
+#endif
 EXTERN_CVAR(Bool, r_drawplayersprites)
 EXTERN_CVAR(Bool, r_deathcamera)
 
@@ -890,6 +893,9 @@ void HWDrawInfo::PreparePlayerSprites(sector_t * viewsector, area_t in_area)
 		!r_drawplayersprites ||
 		!camera->player ||
 		(player->cheats & CF_CHASECAM) ||
+#ifdef DOOM_TOUCH
+		IOSCamera_HidesWeapon() || // Added (iOS touch): the CAMERA's photo view
+#endif
 		(r_deathcamera && camera->health <= 0))
 		return;
 
@@ -925,6 +931,9 @@ void HWDrawInfo::PrepareTargeterSprites(double ticfrac)
 		!r_drawplayersprites ||
 		!camera->player ||
 		(player->cheats & CF_CHASECAM) ||
+#ifdef DOOM_TOUCH
+		IOSCamera_HidesWeapon() || // Added (iOS touch): the CAMERA's photo view
+#endif
 		(r_deathcamera && camera->health <= 0))
 		return;
 

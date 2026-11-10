@@ -49,6 +49,10 @@ set( DOOM_TOUCH_RIG_SOURCE "" CACHE FILEPATH "Linux test rig for the iOS touch c
 if( DOOM_IOS OR DOOM_TOUCH_RIG_SOURCE )
 	set( DOOM_TOUCH ON )
 	add_definitions( -DDOOM_TOUCH=1 )
+	if( NOT DOOM_IOS )
+		# (the rig's own commands and logs: ios_rig, ios_cam...)
+		add_definitions( -DIOSTOUCH_RIGHOOKS=1 )
+	endif()
 endif()
 
 # make all targets use LTO - want to do this early in the cmake to ensure it applies to any targets

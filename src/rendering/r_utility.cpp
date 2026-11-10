@@ -47,6 +47,9 @@
 #include "r_data/r_interpolate.h"
 #include "r_sky.h"
 #include "r_utility.h"
+#ifdef DOOM_TOUCH
+#include "../../ios/IOSCamera.h" // Added (iOS touch): the CAMERA
+#endif
 #include "sbar.h"
 #include "serializer.h"
 #include "swrenderer/r_renderer.h"
@@ -1179,6 +1182,11 @@ void R_SetupFrame(FRenderViewpoint& viewPoint, const FViewWindow& viewWindow, AA
 	}
 
 	R_InterpolateView(viewPoint, player, viewPoint.TicFrac, iView);
+#ifdef DOOM_TOUCH
+	// Added (iOS touch): the CAMERA keeps the player's view and, while its
+	// photo view is on, draws from its own camera instead
+	if (&viewPoint == &r_viewpoint) IOSCamera_View(viewPoint);
+#endif
 
 	// Update any spotlights to offset the camera's actual angle.
 	for (auto l : viewPoint.camera->AttachedLights)

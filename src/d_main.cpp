@@ -125,6 +125,9 @@
 #endif // __unix__
 
 #ifdef DOOM_TOUCH
+#include "../ios/IOSCamera.h" // Added (iOS touch): the CAMERA
+#endif
+#ifdef DOOM_TOUCH
 #include "../ios/IOSGame.h" // Added (iOS touch): the iOS touch controls
 #endif
 #ifdef DOOM_IOS
@@ -1305,6 +1308,9 @@ void D_Display ()
 		AActor *cam = players[consoleplayer].camera;
 		if (cam)
 			fov = DAngle::fromDeg(cam->GetFOV(I_GetTimeFrac()));
+#ifdef DOOM_TOUCH
+		fov = DAngle::fromDeg(IOSCamera_Fov(fov.Degrees())); // Added (iOS touch): the CAMERA's lens
+#endif
 
 		R_SetFOV(vp, fov);
 	}
@@ -1317,6 +1323,27 @@ void D_Display ()
 		V_OutputResized(screen->GetWidth(), screen->GetHeight());
 	}
 
+#ifdef DOOM_TOUCH
+	// Added (iOS touch): the CAMERA's photo view fills the screen (no room
+	// kept for the status bar, which it doesn't draw); the view's size put
+	// back as it ends
+	{
+		static int iosKeptBlocks = -1;
+		if (IOSCamera_HidesHud() && gamestate == GS_LEVEL)
+		{
+			if (iosKeptBlocks < 0 && setblocks < 11)
+			{
+				iosKeptBlocks = setblocks;
+				R_SetViewSize(11);
+			}
+		}
+		else if (iosKeptBlocks >= 0)
+		{
+			R_SetViewSize(iosKeptBlocks);
+			iosKeptBlocks = -1;
+		}
+	}
+#endif
 	// change the view size if needed
 	if (setsizeneeded)
 	{
@@ -1379,19 +1406,37 @@ void D_Display ()
 	R_UpdateSky(I_GetTimeFrac());
 	screen->BeginFrame();
 	twod->ClearClipRect();
+#ifdef DOOM_TOUCH
+	// Added (iOS touch): the CAMERA's frame grabs (this frame's size)
+	IOSCamera_FrameBegin(screen->mScreenViewport.width, screen->mScreenViewport.height);
+#endif
 	if ((gamestate == GS_LEVEL || gamestate == GS_TITLELEVEL) && gametic != 0)
 	{
 		// [ZZ] execute event hook that we just started the frame
 		//E_RenderFrame();
 		//
 
+#ifdef DOOM_TOUCH
+		// Added (iOS touch): the CAMERA's poses and hiding, only while the
+		// view is drawn
+		IOSCamera_RenderBegin();
+#endif
 		D_Render([&]()
 		{
 			viewsec = RenderView(&players[consoleplayer]);
 		}, true);
+#ifdef DOOM_TOUCH
+		IOSCamera_RenderEnd();
+		// (the 3D view and the weapon drawn: the CAMERA's clean photo; the
+		// photo view has no status bar, no flashes)
+		const bool iosCamHud = IOSCamera_HidesHud();
+		if (!iosCamHud) IOSCamera_AfterScene();
+#else
+		const bool iosCamHud = false;
+#endif
 
 		twod->Begin(screen->GetWidth(), screen->GetHeight());
-		if (!hud_toggled)
+		if (!hud_toggled && !iosCamHud)
 		{
 			V_DrawBlend(viewsec);
 

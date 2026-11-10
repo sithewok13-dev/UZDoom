@@ -6,18 +6,21 @@
    A UIKit overlay (IOSTouch.m) sits on top of SDL's game view while a level
    is being played. It turns touches into:
      - a floating move stick under the left thumb (anywhere in the left 42%
-       of the screen): analog movement, up the screen is forward
+       of the screen): analog movement, up the screen is forward; with
+       Always Run off, a run marker (^^) above it: the thumb slid up onto it
+       runs straight ahead (as in the Jedi Knight and Wolf3D ports)
      - drag-to-look anywhere else, fed in as mouse movement (so UZDoom's
-       mouse sensitivity and invert settings apply)
+       mouse sensitivity and invert settings apply), at the tray's LOOK speed
      - tilt aiming (MENU's tray's GYRO: OFF, TOUCH, ALWAYS; SENS 1.0x, 1.5x,
-       2.0x, 3.0x), straight into the player's view angles
-     - buttons. Bottom right: FIRE, with USE / MAP / JUMP on an arc around
-       it and CROUCH as the secondary button beside FIRE (JUMP and CROUCH
-       only where the level lets the player jump / crouch: not in classic
-       DOOM). MAP opens or closes the automap. Dragging on FIRE, the arc and
-       CROUCH also looks. Top left: NEXT WPN and PREV WPN. Top right: QUICK
-       SAVE, QUICK LOAD (0.3 s holds with a ring) and MENU (a tap: the
-       game's menu; held 0.45 s: the tray).
+       2.0x, 3.0x, the gyro's own), straight into the player's view angles
+     - buttons. Bottom right: FIRE, with USE and JUMP on an arc around it
+       and CROUCH as the secondary button beside FIRE (JUMP and CROUCH only
+       where the level lets the player jump / crouch: not in classic DOOM).
+       Dragging on FIRE, the arc and CROUCH also looks. Top left: NEXT WPN,
+       PREV WPN and MAP (the automap). Top middle: CAMERA (IOSCamera.h).
+       Top right: CHEAT (cheat mode), SAVE and LOAD (a tap: the game's Save
+       Game / Load Game menu; held 0.3 s with a ring: quick save / quick
+       load) and MENU (a tap: the game's menu; held 0.45 s: the tray).
      - NEXT WPN and PREV WPN: a quick tap is the next / previous weapon; a
        10 pt slide opens the weapon wheel at once, a 0.3 s hold opens it to
        tap. One slice per weapon in the player's weapon slots (DOOM's own
@@ -25,9 +28,11 @@
        has it, chaingun, rocket launcher, plasma rifle, BFG 9000), with its
        pickup sprite from the loaded game and its ammo. The game holds still
        while it is open.
-     - MENU's tray: SENS, GYRO, FPS, LEVEL and NOCLIP (only while the
-       sithewok cheat is on), the keyboard (the console, for typing cheats
-       and commands).
+     - MENU's tray: LOOK (0.5x to 3x), ALWAYS RUN, SENS, GYRO, OPACITY,
+       FPS (60/120), CAMERA, CHEAT, LEVEL (single player, in a level),
+       NOCLIP (the cheat on), GAMES (more than one game found: "Switch
+       game") and the keyboard (the console, for typing cheats and
+       commands), with the build stamp under it.
    Buttons act on the player directly (UZDoom's ticcmd), whatever keys are
    bound. In menus, intermissions, the finale and while a level loads the
    overlay hides and touches reach SDL as mouse clicks.
@@ -59,6 +64,9 @@ typedef struct IOSTouchHud {
   int bCheatAllowed;   /* the cheat works here (single player, a level being played, cheats allowed) */
   const char *strCheatRefusal; /* ...and if not, why (a static string, or NULL) */
   int bNoclip;         /* the game's noclip is on now */
+  int bRunOn;          /* Always Run (cl_run) is on: the tray's ALWAYS RUN lit, no run marker */
+  int bAutomap;        /* the automap is open (MAP lit) */
+  int bGames;          /* more than one game found: the tray's GAMES shows */
   int ctLevels;        /* the levels the tray's LEVEL lists (0: none) */
   unsigned int uWorld; /* changes with every level started or loaded */
   float afHudFrame[4]; /* (filled by the overlay: IOSTouch_GetHudFrame) */
@@ -73,9 +81,13 @@ enum {
   IOSTOUCH_REQ_RESUME    = 1 << 4, /* unpause */
   IOSTOUCH_REQ_CHEATON   = 1 << 5, /* the cheat came on: god mode on, everything given */
   IOSTOUCH_REQ_CHEATOFF  = 1 << 6, /* the cheat went off: god mode off (what it gave is kept) */
-  IOSTOUCH_REQ_LEVEL     = 1 << 7, /* the cheat's list of levels: go to IOSTouch_TakeLevelPick() */
+  IOSTOUCH_REQ_LEVEL     = 1 << 7, /* the list of levels: go to IOSTouch_TakeLevelPick() */
   IOSTOUCH_REQ_NOCLIP    = 1 << 8, /* the cheat: toggle the game's noclip */
   IOSTOUCH_REQ_MAP       = 1 << 9, /* MAP: open or close the automap */
+  IOSTOUCH_REQ_RUN       = 1 << 10, /* the tray's ALWAYS RUN: cl_run on or off */
+  IOSTOUCH_REQ_SAVEMENU  = 1 << 11, /* SAVE tapped: the game's Save Game menu */
+  IOSTOUCH_REQ_LOADMENU  = 1 << 12, /* LOAD tapped: the game's Load Game menu */
+  IOSTOUCH_REQ_GAMES     = 1 << 13, /* the tray's GAMES: "Switch game" (IOSPicker_PresentSwitch) */
 };
 
 /* Buttons as the game reads them (IOSTouchInput.ulButtons) */
@@ -91,6 +103,7 @@ enum {
 typedef struct IOSTouchInput {
   float fMoveX;           /* move stick: -1..1, right is + */
   float fMoveY;           /* -1..1, forward is + */
+  int bRun;               /* the stick's thumb on its run marker: running (straight ahead) */
   unsigned int ulButtons; /* IOSTOUCH_FIRE... held (or a quick tap) for this read */
   int iSelectWeapon;      /* -1 none, else the wheel's pick (an index into IOSTouchWeapons' list):
                              reported for two reads, then -1 for at least one, never in a read with
@@ -150,7 +163,8 @@ void IOSTouch_Hide(void);
 void IOSTouch_ReadInput(IOSTouchInput *pInput);
 /* The stick alone */
 void IOSTouch_ReadMove(float *pfMoveX, float *pfMoveY);
-/* Look movement since the last call, in mouse counts (+x right, +y down) */
+/* Look movement since the last call, in mouse counts (+x right, +y down),
+   at the tray's LOOK speed */
 void IOSTouch_TakeLook(float *pfDX, float *pfDY);
 /* Tilt aiming since the last call, in degrees for the view to turn (+ left)
    and tilt (+ up), straight into the player's view angles */
@@ -171,6 +185,10 @@ void IOSTouch_CheatTyped(void);
 int IOSTouch_CheatOn(void);
 int IOSTouch_TakeLevelPick(void);
 void IOSTouch_CheatLevelFailed(void); /* the level picked couldn't be started */
+/* CHEAT's picture, from the game's own art (RGBA as the wheel's icons): the
+   overlay asks once (IOSTouch_WantsCheatIcon); NULL: none, CHEAT says CHEAT */
+int IOSTouch_WantsCheatIcon(void);
+void IOSTouch_SetCheatIcon(const unsigned char *pubRGBA, int iWidth, int iHeight);
 /* A line of news over the game for fSeconds */
 void IOSTouch_ShowMessage(const char *str, double fSeconds);
 

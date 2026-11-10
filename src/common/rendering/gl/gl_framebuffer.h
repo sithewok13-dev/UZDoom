@@ -58,6 +58,9 @@ public:
 	void WaitForCommands(bool finish) override;
 	void SetSaveBuffers(bool yes) override;
 	void CopyScreenToBuffer(int width, int height, uint8_t* buffer) override;
+#ifdef DOOM_TOUCH
+	int IOSReadFrame(int w, int h, unsigned char* p) override; // Added (iOS touch): the CAMERA's frame grabs
+#endif
 	bool FlipSavePic() const override { return true; }
 
 	FRenderState* RenderState() override;

@@ -7,8 +7,15 @@
 // last); held 0.5 s (a ring runs round the card, then a thump) its add-ons
 // open: the main game and each add-on, to tap. An add-on is its main game
 // with the add-on's files loaded (-file).
+//
+// "Switch game" (MENU's tray, IOSGame.cpp): the same picker over the game,
+// with Cancel. A pick can't start there (UZDoom starts one game a run): the
+// pick is kept (NSUserDefaults), the game's settings are written, a "Tap to
+// start <game>" notification is asked for and the app closes; the next
+// start within 10 minutes goes straight to that game (IOSPicker_Run).
 
 #import <UIKit/UIKit.h>
+#import <UserNotifications/UserNotifications.h>
 #include <stdio.h>
 #include <string.h>
 #include "IOSPicker.h"
@@ -374,7 +381,8 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 // ---------------------------------------------------------------- the picker
 
 @interface IOSPickerController : UIViewController
-@property (nonatomic, copy) void (^done)(IOSPickEntry* picked); // nil: none
+@property (nonatomic, copy) void (^done)(IOSPickEntry* picked); // nil: none (Cancel)
+@property (nonatomic) BOOL switching; // "Switch game", with Cancel
 @end
 
 @implementation IOSPickerController
@@ -394,6 +402,13 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 	if (self.done) self.done(picked);
 }
 
+- (void)cancelTapped
+{
+	if (finished) return;
+	finished = YES;
+	if (self.done) self.done(nil);
+}
+
 - (void)viewDidLoad
 {
 	[super viewDidLoad];
@@ -411,10 +426,20 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 		NSForegroundColorAttributeName: [UIColor colorWithRed:0.90 green:0.15 blue:0.08 alpha:1.0],
 		NSKernAttributeName: @4 }];
 	UILabel* heading = [[UILabel alloc] init];
-	heading.text = @"Choose a game";
+	heading.text = self.switching ? @"Switch game" : @"Choose a game";
 	heading.textColor = [UIColor colorWithWhite:1.0 alpha:0.9];
 	heading.font = [UIFont systemFontOfSize:20 weight:UIFontWeightSemibold];
-	UIStackView* top = [[UIStackView alloc] initWithArrangedSubviews:@[ logo, heading, [UIView new] ]];
+	NSMutableArray<UIView*>* topViews = [NSMutableArray arrayWithArray:@[ logo, heading, [UIView new] ]];
+	if (self.switching)
+	{
+		UIButton* cancel = [UIButton buttonWithType:UIButtonTypeSystem];
+		[cancel setTitle:@"Cancel" forState:UIControlStateNormal];
+		cancel.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
+		cancel.tintColor = UIColor.whiteColor;
+		[cancel addTarget:self action:@selector(cancelTapped) forControlEvents:UIControlEventTouchUpInside];
+		[topViews addObject:cancel];
+	}
+	UIStackView* top = [[UIStackView alloc] initWithArrangedSubviews:topViews];
 	top.alignment = UIStackViewAlignmentLastBaseline;
 	top.spacing = 16;
 
@@ -434,7 +459,8 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 	}
 
 	UILabel* hint = [[UILabel alloc] init];
-	hint.text = @"Tap a game to play  ·  Hold it for its add-ons";
+	hint.text = self.switching ? @"Tap a game: the app closes, then tap its notification to start it  ·  Hold it for its add-ons"
+	                           : @"Tap a game to play  ·  Hold it for its add-ons";
 	hint.textColor = [UIColor colorWithWhite:1.0 alpha:0.5];
 	hint.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
 	hint.adjustsFontSizeToFitWidth = YES;
@@ -584,6 +610,105 @@ static UIWindowScene* Scene()
 	return nil;
 }
 
+// ---------------------------------------------------------------- switching
+
+#define KEY_NEXT_KEY @"IOSPickerNextKey"
+#define KEY_NEXT_TIME @"IOSPickerNextTime"
+#define NEXT_GAME_TIME 600.0 // seconds
+
+int IOSPicker_GameCount(void)
+{
+	return (int)_entries.count;
+}
+
+// The game picked with "Switch game" before the app closed, if it was in
+// the last 10 minutes and is still there (nil otherwise); its "tap to
+// start" notification, if still there, has done its job
+static IOSPickEntry* TakeNext(void)
+{
+	[[UNUserNotificationCenter currentNotificationCenter] removeAllDeliveredNotifications];
+	NSUserDefaults* d = NSUserDefaults.standardUserDefaults;
+	NSString* key = [d stringForKey:KEY_NEXT_KEY];
+	const double age = NSDate.timeIntervalSinceReferenceDate - [d doubleForKey:KEY_NEXT_TIME];
+	[d removeObjectForKey:KEY_NEXT_KEY];
+	[d removeObjectForKey:KEY_NEXT_TIME];
+	if (!key || age < 0 || age > NEXT_GAME_TIME) return nil;
+	for (IOSPickEntry* e in _entries)
+		if ([e.key isEqualToString:key]) return e;
+	return nil;
+}
+
+// The pick kept, the settings written, a "Tap to start" notification asked
+// for, and the app closed
+static void CloseForNext(IOSPickEntry* picked)
+{
+	NSUserDefaults* d = NSUserDefaults.standardUserDefaults;
+	[d setObject:picked.key forKey:KEY_NEXT_KEY];
+	[d setDouble:NSDate.timeIntervalSinceReferenceDate forKey:KEY_NEXT_TIME];
+	[d synchronize];
+	IOSGame_WriteConfig();
+	NSString* title = picked.label ?: @"the game";
+	printf("Switch game: %s, the app closes\n", title.UTF8String);
+	fflush(stdout);
+
+	UNUserNotificationCenter* center = UNUserNotificationCenter.currentNotificationCenter;
+	[center requestAuthorizationWithOptions:UNAuthorizationOptionAlert | UNAuthorizationOptionSound
+		completionHandler:^(BOOL granted, NSError* err) {
+		if (!granted)
+		{
+			// no notifications: say how it goes instead, then close
+			dispatch_async(dispatch_get_main_queue(), ^{
+				UIAlertController* alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Open DOOM again to start %@", title]
+					message:@"The app closes now. Your pick starts when you open it again (within 10 minutes)." preferredStyle:UIAlertControllerStyleAlert];
+				[alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction* a) { exit(0); }]];
+				UIViewController* top = nil;
+				for (UIWindow* w in Scene().windows) if (w.isKeyWindow) top = w.rootViewController;
+				while (top.presentedViewController) top = top.presentedViewController;
+				if (top) [top presentViewController:alert animated:YES completion:nil];
+				else exit(0);
+			});
+			return;
+		}
+		UNMutableNotificationContent* content = [UNMutableNotificationContent new];
+		content.title = [NSString stringWithFormat:@"Tap to start %@", title];
+		content.body = @"Or open DOOM within 10 minutes.";
+		UNNotificationRequest* request = [UNNotificationRequest requestWithIdentifier:@"doom.nextgame" content:content
+			trigger:[UNTimeIntervalNotificationTrigger triggerWithTimeInterval:1 repeats:NO]];
+		[center addNotificationRequest:request withCompletionHandler:^(NSError* e2) {
+			dispatch_async(dispatch_get_main_queue(), ^{ exit(0); });
+		}];
+	}];
+}
+
+void IOSPicker_PresentSwitch(void (*pfnDone)(int bPicked))
+{
+	UIWindowScene* scene = Scene();
+	UIViewController* host = nil;
+	for (UIWindow* w in scene.windows)
+		if (w.isKeyWindow) { host = w.rootViewController; break; }
+	if (!host) host = scene.windows.firstObject.rootViewController;
+	while (host.presentedViewController) host = host.presentedViewController;
+	if (!host || _entries.count == 0)
+	{
+		if (pfnDone) pfnDone(0);
+		return;
+	}
+	IOSPickerController* menu = [IOSPickerController new];
+	menu.switching = YES;
+	menu.modalPresentationStyle = UIModalPresentationFullScreen;
+	__weak IOSPickerController* weakMenu = menu;
+	menu.done = ^(IOSPickEntry* picked) {
+		if (picked)
+		{
+			CloseForNext(picked);
+			return; // (the menu stays up until the app closes)
+		}
+		[weakMenu dismissViewControllerAnimated:YES completion:nil];
+		if (pfnDone) pfnDone(0);
+	};
+	[host presentViewController:menu animated:YES completion:nil];
+}
+
 int IOSPicker_Run(const char* const* names, int ctNames, int iLast, char* pszFiles, int ctFilesSize)
 {
 	if (pszFiles && ctFilesSize > 0) pszFiles[0] = 0;
@@ -592,6 +717,18 @@ int IOSPicker_Run(const char* const* names, int ctNames, int iLast, char* pszFil
 	_lastKey = [[NSUserDefaults standardUserDefaults] stringForKey:kLastKey];
 	// (nothing remembered yet: the game UZDoom played last)
 	if (_lastKey == nil && iLast >= 0 && iLast < ctNames) _lastKey = _entries[iLast].key;
+
+	// the game picked with "Switch game" before the app closed: straight in
+	IOSPickEntry* next = TakeNext();
+	if (next)
+	{
+		[[NSUserDefaults standardUserDefaults] setObject:next.key forKey:kLastKey];
+		if (pszFiles && ctFilesSize > 0)
+			strlcpy(pszFiles, [next.files componentsJoinedByString:@"\n"].UTF8String ?: "", ctFilesSize);
+		printf("Game picker: %s, as picked with Switch game before the app closed\n", next.label.UTF8String);
+		fflush(stdout);
+		return next.iwad;
+	}
 
 	UIWindowScene* scene = Scene();
 	UIWindow* window = scene ? [[UIWindow alloc] initWithWindowScene:scene] : [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
