@@ -304,6 +304,10 @@ void I_PrintStr(const char *cp)
 
 bool HoldingQueryKey(const char* key)
 {
+#ifdef DOOM_IOS
+	// Added (iOS): no key to hold, and no SDL window before the picker
+	return false;
+#endif
 	int code = 0;
 
 	if (!stricmp(key, "shift"))

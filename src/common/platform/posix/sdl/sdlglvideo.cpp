@@ -169,7 +169,6 @@ namespace Priv
 		caption.Format(GAMENAME " %s (%s)", GetVersionString(), GetGitTime());
 
 #ifdef DOOM_IOS
-		// iOS: always the whole screen, at the screen's full resolution
 		// iOS: the whole screen at the screen's full resolution (the frames
 		// are handed over in ios/i_ios.mm: with SDL's swap, nothing after the
 		// first frames reached the screen)
@@ -376,7 +375,12 @@ SDLVideo::SDLVideo ()
 	}
 
 #ifdef HAVE_VULKAN
+#ifdef DOOM_IOS
+	// iOS: Vulkan unless OpenGL ES was asked for (there is no desktop OpenGL)
+	Priv::vulkanEnabled = vid_preferbackend != BACKEND_OPENGLES;
+#else
 	Priv::vulkanEnabled = vid_preferbackend == BACKEND_VULKAN;
+#endif
 #ifdef DOOM_IOS
 	// iOS: MoltenVK, from the app's Frameworks folder (OpenGL ES without it)
 	if (Priv::vulkanEnabled && !IOS_LoadVulkan()) Priv::vulkanEnabled = false;
@@ -461,12 +465,17 @@ DFrameBuffer *SDLVideo::CreateFrameBuffer ()
 
 	if (fb == nullptr)
 	{
+#ifdef DOOM_IOS
+		// iOS: OpenGL ES is the only OpenGL (the desktop renderer needs 3.3)
+		fb = new OpenGLESRenderer::OpenGLFrameBuffer(0, vid_fullscreen);
+#else
 #ifdef HAVE_GLES2
 		if (vid_preferbackend != BACKEND_OPENGL)
 			fb = new OpenGLESRenderer::OpenGLFrameBuffer(0, vid_fullscreen);
 		else
 #endif
 			fb = new OpenGLRenderer::OpenGLFrameBuffer(0, vid_fullscreen);
+#endif
 	}
 
 	return fb;

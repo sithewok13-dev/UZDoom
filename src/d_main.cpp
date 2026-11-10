@@ -118,6 +118,7 @@
 #include "wi_stuff.h"
 #include "wipe.h"
 #include "zwidget/window/window.h"
+#include <stdexcept>
 
 #ifdef __unix__
 #include "i_system.h"  // for SHARE_DIR
@@ -4402,8 +4403,34 @@ void SignalHandler(int signal)
 	}
 }
 
+#ifdef DOOM_IOS
+// iOS: no ZWidget windows. The game picker (ios/IOSPicker.mm), the fatal
+// error alert (ios/i_ios.mm) and the text startup screen stand in for the
+// launcher, the error window and the startup window, so this backend only
+// has to exist; a window asked of it anyway (the network lobby) is an error
+// the alert shows, not a second window over the game.
+class IOSNoWindowBackend : public DisplayBackend
+{
+public:
+	std::unique_ptr<DisplayWindow> Create(DisplayWindowHost*, DisplayWindow*, RenderAPI, struct WindowParams) override
+	{
+		throw std::runtime_error("This window is not available on iOS");
+	}
+	void ProcessEvents() override {}
+	void RunLoop() override {}
+	void ExitLoop() override {}
+	void* StartTimer(int, std::function<void()>) override { return nullptr; }
+	void StopTimer(void*) override {}
+	Size GetScreenSize() override { return Size(1024, 768); }
+};
+#endif
+
 int GameMain()
 {
+#ifdef DOOM_IOS
+	DisplayBackend::Set(std::make_unique<IOSNoWindowBackend>());
+	printf("iOS: ZWidget backend: none (the iOS picker and alerts)\n");
+#else
 	// On Windows, prefer the native win32 backend.
 	// On other platforms, use SDL until the other backends are more mature.
 	auto zwidget = DisplayBackend::TryCreateWin32();
@@ -4415,6 +4442,7 @@ int GameMain()
 		return -1;
 	}
 	DisplayBackend::Set(std::move(zwidget));
+#endif
 
 	int ret = 0;
 	GameTicRate = TICRATE;

@@ -75,6 +75,8 @@ enum {
 
 #if defined(VID_BACKEND)
 	BACKEND_DEFAULT = VID_BACKEND,
+#elif defined(DOOM_IOS)
+	BACKEND_DEFAULT = BACKEND_VULKAN, // iOS: Vulkan on MoltenVK (OpenGL ES if it can't start)
 #elif defined(HAVE_VULKAN) and not defined(__APPLE__)
 	BACKEND_DEFAULT = BACKEND_VULKAN,
 #else

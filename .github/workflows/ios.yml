@@ -112,7 +112,18 @@ jobs:
         grep -E "(ios/).*warning:" build.log | sort -u | head -60 || true
         tail -3 build.log
 
-    # The build stamp (the run number and the UTC date), shown under the
+    # The app ended at start when ZWidget had no backend on iOS ("Unable to
+    # create init zwidget"): the iOS build must have its own, without windows
+    - name: Check the start-up pieces in the app
+      run: |
+        set -e
+        BIN=$(find build -maxdepth 4 -path "*DOOM.app/DOOM" -type f | head -1)
+        test -n "$BIN"
+        LC_ALL=C grep -aqF "iOS: ZWidget backend: none" "$BIN" || { echo "::error::The iOS ZWidget backend is not in the app"; exit 1; }
+        if LC_ALL=C grep -aqF "Unable to create init zwidget" "$BIN"; then echo "::error::The app still asks ZWidget for a Win32 or SDL2 backend"; exit 1; fi
+        echo "ZWidget: the iOS backend is in $BIN"
+
+, shown under the
     # open MENU tray as "build 80 · Nov 9" and on the release's first line
     - name: Build stamp
       id: stamp
