@@ -3554,7 +3554,6 @@ typedef struct {
 - (void)refreshButtonLooks;
 - (void)refreshStick;
 - (void)syncWheel;
-- (void)syncLevels;
 - (void)makeLevelPanel;
 - (void)makeCheat;
 - (void)makeCamera;
