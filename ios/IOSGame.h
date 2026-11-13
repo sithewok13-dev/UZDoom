@@ -40,5 +40,6 @@ bool IOSGame_HudFills();
 // 0 the style (IOSTOUCH_HUD_*), 1 the face on, then in the 2D drawer's
 // pixels (w x h): 2 a pill's height, 3 the pills' bottom, 4 and 5 SPLIT's
 // outer edges, 6 STRIP's widest half; 7 how strongly the HUD shows (0.2..1: the tray's
-// HUD held, its slider)
+// HUD held, its slider); 8 and 9 where the game's pickup messages start (top, left:
+// below the top-left buttons)
 double IOSGame_HudValue(int which, double w, double h);

@@ -1368,6 +1368,8 @@ double IOSGame_HudValue(int which, double w, double h)
 	case 5: return hl.fRight * w;
 	case 6: return hl.fStripHalf * w;
 	case 7: return hl.fAlpha;
+	case 8: return hl.fMsgTop * h;
+	case 9: return hl.fMsgLeft * w;
 	}
 	return 0;
 }

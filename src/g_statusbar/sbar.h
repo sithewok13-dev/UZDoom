@@ -37,7 +37,16 @@ class AActor;
 EXTERN_CVAR(Int, con_scaletext);
 inline int active_con_scaletext(F2DDrawer* drawer, bool newconfont = false)
 {
+#ifdef DOOM_TOUCH
+	// Added (iOS touch): the game's messages at DOOM's own size for the
+	// screen's height (320x200's), not the 640x400 the engine picks: about
+	// twice as big on a phone, the owner's choice ("B")
+	int alt = con_scaletext;
+	if (alt <= 0) alt = drawer->GetHeight() / 200 > 1 ? drawer->GetHeight() / 200 : 1;
+	return newconfont ? GetConScale(drawer, alt) : GetUIScale(drawer, alt);
+#else
 	return newconfont ? GetConScale(drawer, con_scaletext) : GetUIScale(drawer, con_scaletext);
+#endif
 }
 
 class player_t;

@@ -171,6 +171,8 @@ typedef struct IOSTouchHudLayout {
   float fLeft, fRight; /* SPLIT's pills' outer edges (of the width) */
   float fStripHalf;    /* STRIP: its pill reaches at most this far either side of the middle (of the width),
                           clear of the buttons */
+  float fMsgTop;       /* the game's pickup messages start here (of the height): below the top-left buttons */
+  float fMsgLeft;      /* ...lined up with NEXT WPN's left edge (of the width) */
 } IOSTouchHudLayout;
 void IOSTouch_GetHudLayout(IOSTouchHudLayout *pLayout);
 /* The frame rate asked for in the tray (FPS held): 60 or 120. The screen is

@@ -633,7 +633,7 @@ static IOSTouchRect _rMessages;
 // high, 34 px above the bottom where there's a home indicator, 2.4 pt in
 // from the HUD frame's sides. In SPLIT, FIRE (and its arc with it) sits
 // IOSTOUCH_PILL_CLEAR above them; in CLASSIC, above DOOM's status bar.
-#define IOSTOUCH_PILL_H 30.6
+#define IOSTOUCH_PILL_H 39.8 // (the owner chose 1.3x the first mockups' 30.6: "LARGE", the only size)
 #define IOSTOUCH_PILL_REF_H 440.0
 #define IOSTOUCH_PILL_BOTTOM 16.3
 #define IOSTOUCH_PILL_BOTTOM_BARE 8.0 // (no home indicator)
@@ -674,6 +674,7 @@ static void IOSTouch_PillGeometry(double W, double H, double inLeft, double inTo
 
 // The pills as the last layout placed them (points), and the screen's size
 static double _fPillTop = 0.0, _fPillBottom = 0.0, _fPillLeft = 0.0, _fPillRight = 0.0, _fStripHalf = 0.0;
+static double _fMsgTop = 0.0, _fMsgLeft = 0.0; // the game's pickup messages: below NEXT WPN | PREV WPN | MAP, from NEXT WPN's left edge (points)
 static double _fPillW = 0.0, _fPillScreenH = 0.0;
 // What the buttons were laid out for (IOSTouch_LayoutKey: the HUD, and in
 // CLASSIC where its status bar's top was): laid out again when it changes
@@ -885,6 +886,8 @@ static void IOSTouch_LayoutButtons(double W, double H, double inLeft, double inT
   _aButtons[BTN_PREVWPN].x = left + 84;
   _aButtons[BTN_MAP].x = left + 144;
   _aButtons[BTN_NEXTWPN].y = _aButtons[BTN_PREVWPN].y = _aButtons[BTN_MAP].y = topLeftY;
+  _fMsgTop = topLeftY + _aButtons[BTN_NEXTWPN].radius + 6.0;
+  _fMsgLeft = _aButtons[BTN_NEXTWPN].x - _aButtons[BTN_NEXTWPN].radius;
   // Top right: SAVE, LOAD, MENU in the corner -- spaced well apart, so a
   // press meant for one of the two quick holds can't land on the other
   _aButtons[BTN_QUICKSAVE].x = right - 156;
@@ -1022,6 +1025,8 @@ void IOSTouch_GetHudLayout(IOSTouchHudLayout *p)
     p->fLeft = 0.023f;
     p->fRight = 0.977f;
     p->fStripHalf = 0.3f;
+    p->fMsgTop = 0.125f;
+    p->fMsgLeft = 0.065f;
     return;
   }
   p->fPillH = (float)((_fPillBottom - _fPillTop) / _fPillScreenH);
@@ -1029,6 +1034,8 @@ void IOSTouch_GetHudLayout(IOSTouchHudLayout *p)
   p->fLeft = (float)(_fPillLeft / _fPillW);
   p->fRight = (float)(_fPillRight / _fPillW);
   p->fStripHalf = (float)(_fStripHalf / _fPillW);
+  p->fMsgTop = (float)(_fMsgTop / _fPillScreenH);
+  p->fMsgLeft = (float)(_fMsgLeft / _fPillW);
 }
 
 // ---------------------------------------------------------------- touches

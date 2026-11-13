@@ -63,7 +63,8 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   CAMERA does; `IOSGame_HudState` in `D_Display`); SPLIT/STRIP draw dark
   rounded pills of DOOM's own graphics in the Doom status bar's ZScript
   (`DoomStatusBar.DrawIOSHud`, sizes from `BaseStatusBar.IOSHud` =
-  `IOSTouch_GetHudLayout`: the approved mockups' 64 px pill at 2000x921,
+  `IOSTouch_GetHudLayout`: an 83 px pill at 2000x921 (39.8 of 440 pt; the
+  owner chose this LARGE size, 1.3x the first mockups', as the only one),
   scaled with the screen's height): SPLIT bottom left [face] | health |
   armour, bottom right ammo | keys, FIRE and its arc lifted 14 pt above
   them; STRIP one pill in the middle (shrunk to stay clear of the
@@ -73,6 +74,11 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   20%-100%, default 100%): it fades the pills and their contents, and
   CLASSIC's status bar (`Alpha`; it dims over the view's border, the view
   doesn't reach under it).
+- **Game messages:** pickups and the centre messages at DOOM's own size
+  for the screen's height (scale height / 200, `active_con_scaletext` in
+  `sbar.h`; about 2x the engine's own on a phone; owner's choice). The
+  pickup lines start below NEXT WPN | PREV WPN | MAP, from NEXT WPN's left
+  edge (`fMsgTop`/`fMsgLeft` of the HUD layout, `c_notifybuffer.cpp`).
 - **LEVEL** (tray, any single-player level, cheat or not; gold while the
   cheat is on): the game's maps in MAPINFO's order (add-ons' too), the game
   held still while open; a tap is `map <lump>`: a new game at that map

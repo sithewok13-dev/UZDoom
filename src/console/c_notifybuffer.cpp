@@ -32,6 +32,9 @@
 #include "gstrings.h"
 #include "v_video.h"
 #include "vm.h"
+#ifdef DOOM_TOUCH
+#include "../../ios/IOSGame.h"
+#endif
 
 struct FNotifyBuffer : public FNotifyBufferBase
 {
@@ -140,6 +143,10 @@ void FNotifyBuffer::AddString(int printlevel, FString source)
 	}
 
 	int width = DisplayWidth / active_con_scaletext(twod, generic_ui);
+#ifdef DOOM_TOUCH
+	// Added (iOS touch): the lines start right of the top-left buttons' edge
+	width -= int(IOSGame_HudValue(9, DisplayWidth, DisplayHeight) * 2) / active_con_scaletext(twod, generic_ui);
+#endif
 	FFont *font = FFont::GetSmallTextFont(generic_ui ? NewSmallFont : AlternativeSmallFont);
 	FNotifyBufferBase::AddString(printlevel & PRINT_TYPES, font, source, width, con_notifytime, con_notifylines);
 }
@@ -154,6 +161,15 @@ void FNotifyBuffer::Draw()
 
 	line = Top + font->GetDisplacement();
 	left = font->GetDisplacement();
+#ifdef DOOM_TOUCH
+	// Added (iOS touch): below the top-left buttons (NEXT WPN | PREV WPN |
+	// MAP), lined up with NEXT WPN, not under them
+	{
+		const int scale = active_con_scaletext(twod, generic_ui);
+		line += int(IOSGame_HudValue(8, twod->GetWidth(), twod->GetHeight())) / scale;
+		left += int(IOSGame_HudValue(9, twod->GetWidth(), twod->GetHeight())) / scale;
+	}
+#endif
 	canskip = true;
 
 	lineadv = font->GetHeight ();
