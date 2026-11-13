@@ -212,7 +212,7 @@ enum {
   KIND_LOOKSPEED,// (MENU's tray) the next look speed, when the touch lifts on it; held IOSTOUCH_MENU_HOLD, back to 1x
   KIND_ALWAYSRUN,// (MENU's tray) DOOM's Always Run (cl_run) on or off, when the touch lifts on it
   KIND_WHEEL,    // NEXT WPN, PREV WPN: a tap presses its game button once as it lifts; a slide or a hold opens the weapon wheel
-  KIND_OPACITY,  // (MENU's tray) opens or closes its slider under the tray, when the touch lifts on it; held IOSTOUCH_MENU_HOLD, back to 100%
+  KIND_OPACITY,  // (MENU's tray) opens or closes its panel under the tray (BUTTONS, HUD), when the touch lifts on it; held IOSTOUCH_MENU_HOLD, both back to 100%
   KIND_CHEAT,    // CHEAT: held IOSTOUCH_CHEAT_HOLD, the cheat on or off; a tap does nothing
   KIND_CHEATSWITCH, // (MENU's tray) shows CHEAT and switches the cheat on, or leaves cheat mode, when the touch lifts on it
   KIND_LEVELPICK,// (MENU's tray, a level, single player) opens the list of levels, when the touch lifts on it
@@ -220,7 +220,7 @@ enum {
   KIND_GAMES,    // (MENU's tray, more than one game found) "Switch game", when the touch lifts on it
   KIND_CAMERA,   // CAMERA: a tap, a hold, a slide (see IOSTOUCH_SELFIE_HOLD)
   KIND_CAMSWITCH,// (MENU's tray) shows or hides CAMERA, when the touch lifts on it; held IOSTOUCH_MENU_HOLD, CAMERA's options
-  KIND_HUDSTYLE, // (MENU's tray) the next HUD: SPLIT, STRIP, CLASSIC, NONE, when the touch lifts on it; held IOSTOUCH_MENU_HOLD, the HUD's strength (a slider)
+  KIND_HUDSTYLE, // (MENU's tray) the next HUD: SPLIT, STRIP, CLASSIC, NONE, when the touch lifts on it
   KIND_HUDFACE,  // (MENU's tray) the face in the HUD's pills on or off, when the touch lifts on it
 };
 
@@ -641,14 +641,10 @@ static IOSTouchRect _rMessages;
 #define IOSTOUCH_PILL_EDGE_MIN 10.0
 #define IOSTOUCH_PILL_CLEAR 14.0
 #define IOSTOUCH_BAR_CLEAR 10.0
-static int _ctHudOpacityOpened = 0; // (a thump each)
 static int _iHudStyle = IOSTOUCH_HUD_SPLIT, _bHudFace = 1, _bHudPrefsLoaded = 0;
-// ...and how strongly the HUD shows (the tray's HUD held: its slider under
-// the tray, as OPACITY's; IOSTOUCH_OPACITY_MIN to 1 in 5% steps; 1 unless
-// changed), whether that slider is open, its hold's ring
+// ...and how strongly the HUD shows (the HUD slider in OPACITY's panel;
+// IOSTOUCH_OPACITY_MIN to 1 in 5% steps; 1 unless changed)
 static float _fHudOpacity = 1.0f;
-static int _bHudOpacityOpen = 0;
-static float _fHudRing = 0.0f;
 static void IOSTouch_LoadHudPrefs(void); // (the view's, the rig's)
 static void IOSTouch_SaveHudPrefs(void);
 static void IOSTouch_HudPrefs(void)
@@ -661,7 +657,7 @@ static void IOSTouch_HudPrefs(void)
   if (!(_fHudOpacity >= 0.2f && _fHudOpacity <= 1.0f)) _fHudOpacity = 1.0f;
 }
 
-// The HUD's strength set (the view's slider, the rig's command): in 5%
+// The HUD's strength set (the panel's HUD slider, the rig's command): in 5%
 // steps, kept when bSave (as the slider lifts)
 static float IOSTouch_OpacityStep(float k);
 static void IOSTouch_SetHudOpacity(float k, int bSave)
@@ -742,7 +738,7 @@ static void IOSTouch_PlaceTray(int iShown)
 
 // The screen's usable edges (points), as the last layout had them: the run
 // marker keeps inside them
-static double _fSafeLeft = 8.0, _fSafeTop = 8.0, _fSafeRight = 8.0;
+static double _fSafeLeft = 8.0, _fSafeTop = 8.0, _fSafeRight = 8.0, _fSafeBottom = 0.0;
 
 static IOSTouchHud _hud; // (the latest HUD state: below)
 
@@ -861,6 +857,7 @@ static void IOSTouch_LayoutButtons(double W, double H, double inLeft, double inT
   _fSafeLeft = left;
   _fSafeTop = top;
   _fSafeRight = right;
+  _fSafeBottom = bottom;
 
   // The pills (the game draws them): STRIP's, in the middle, keeps 6 pt
   // clear of any button of the cluster that reaches down beside it
@@ -1108,6 +1105,27 @@ static float _fOpacity = 1.0f;
 static int _bOpacityOpen = 0;
 static float _fOpacityRing = 0.0f;
 static int _ctOpacityResets = 0;
+
+// OPACITY's panel (tapped open under the tray): two rows, BUTTONS (the
+// controls) and HUD (the game's HUD), each a label at its left, a slider
+// and its value; under OPACITY, kept inside the screen's usable edges
+// (clear of the corners and the home indicator) and above the bottom; the
+// narrowest screen (iPhone SE, 667 pt) has room for its 300 pt
+#define IOSTOUCH_OPACITY_PANEL_W 300.0
+#define IOSTOUCH_OPACITY_ROW_H 40.0
+#define IOSTOUCH_OPACITY_PANEL_PAD 6.0
+#define IOSTOUCH_OPACITY_LABEL_W 72.0
+#define IOSTOUCH_OPACITY_VALUE_W 44.0
+static IOSTouchRect IOSTouch_OpacityPanel(void)
+{
+  const double w = IOSTOUCH_OPACITY_PANEL_W, h = 2 * IOSTOUCH_OPACITY_ROW_H + 2 * IOSTOUCH_OPACITY_PANEL_PAD;
+  const IOSTouchButton *o = &_aButtons[BTN_TRAYOPACITY];
+  double cx = fmax(fmin(o->x, _fSafeRight - w * 0.5), _fSafeLeft + w * 0.5);
+  double y0 = o->y + o->radius + 10.0;
+  if (_fSafeBottom > 0.0 && y0 + h > _fSafeBottom) y0 = _fSafeBottom - h;
+  const IOSTouchRect r = { 1, round(cx - w * 0.5), round(y0), round(cx - w * 0.5) + w, round(y0) + h };
+  return r;
+}
 
 static float IOSTouch_OpacityStep(float k)
 {
@@ -1490,8 +1508,7 @@ static void IOSTouch_UseTrayButton(int button)
     }
   }
   else if (kind == KIND_OPACITY) {
-    _bOpacityOpen = !_bOpacityOpen; // its slider (the tray stays)
-    _bHudOpacityOpen = 0; // (one slider at a time)
+    _bOpacityOpen = !_bOpacityOpen; // its panel, BUTTONS and HUD (the tray stays)
     return;
   }
   else if (kind == KIND_LOOKSPEED) {
@@ -3065,8 +3082,7 @@ static void IOSTouch_TouchEnded(const void *touch, double x, double y, int bCanc
         else if (!bSaveHeld) _iRequests |= IOSTOUCH_REQ_LOADMENU;
       }
       else if (IOSTouch_IsTrayButton(s->button)
-               && !((s->button == BTN_TRAYFPS || s->button == BTN_TRAYOPACITY || s->button == BTN_TRAYLOOK || s->button == BTN_TRAYCAM
-                     || s->button == BTN_TRAYHUD) && s->bFired)) {
+               && !((s->button == BTN_TRAYFPS || s->button == BTN_TRAYOPACITY || s->button == BTN_TRAYLOOK || s->button == BTN_TRAYCAM) && s->bFired)) {
         IOSTouch_UseTrayButton(s->button); // (not the tray's FPS slid off, or OPACITY, LOOK or CAMERA once held: that set the default, or opened the options)
       }
       else if (b->kind == KIND_MENU && !s->bFired) {
@@ -3083,7 +3099,6 @@ static void IOSTouch_TouchEnded(const void *touch, double x, double y, int bCanc
     if (s->button == BTN_TRAYCAM) _fCamSwitchRing = 0.0f;
     if (s->button == BTN_TRAYFPS) _fFpsRing = 0.0f;
     if (s->button == BTN_TRAYOPACITY) _fOpacityRing = 0.0f;
-    if (s->button == BTN_TRAYHUD) _fHudRing = 0.0f;
     if (s->button == BTN_TRAYLOOK) _fLookRing = 0.0f;
     if (s->button == BTN_CHEAT) _fCheatRing = 0.0f;
     // MENU held until its tray opened, then slid onto one of its buttons
@@ -3150,7 +3165,6 @@ static void IOSTouch_TickHolds(double now)
   // the furthest along of SAVE's and of LOAD's holds (a touch each)
   _fFpsRing = 0.0f; // (set again below while the tray's FPS is held)
   _fOpacityRing = 0.0f; // (...and OPACITY)
-  _fHudRing = 0.0f; // (...and HUD)
   _fLookRing = 0.0f; // (...and LOOK)
   _fCameraRing = _fCamSwitchRing = 0.0f; // (...and CAMERA, and the tray's)
   float fSaveRing = 0.0f, fLoadRing = 0.0f;
@@ -3214,28 +3228,9 @@ static void IOSTouch_TickHolds(double now)
         _fCamSwitchRing = (float)progress;
       }
     }
-    else if (s->button == BTN_TRAYHUD) {
-      // the tray's HUD held: the HUD's own strength, a slider under the tray
-      // as OPACITY's (the lift then doesn't change the HUD)
-      if (!IOSTouch_LiftsOnButton(s->x, s->y, BTN_TRAYHUD)) {
-        s->bFired = 1;
-        _fHudRing = 0.0f;
-        continue;
-      }
-      const double progress = (now - s->tDown) / IOSTOUCH_MENU_HOLD;
-      if (progress >= 1.0) {
-        s->bFired = 1;
-        _fHudRing = 0.0f;
-        _bHudOpacityOpen = 1;
-        _bOpacityOpen = 0; // (one slider at a time)
-        _ctHudOpacityOpened++;
-      }
-      else {
-        _fHudRing = (float)progress;
-      }
-    }
     else if (s->button == BTN_TRAYOPACITY) {
-      // the tray's OPACITY held: back to 100% (the lift then does nothing)
+      // the tray's OPACITY held: the buttons and the HUD back to 100% (the
+      // lift then does nothing)
       if (!IOSTouch_LiftsOnButton(s->x, s->y, BTN_TRAYOPACITY)) {
         s->bFired = 1;
         _fOpacityRing = 0.0f;
@@ -3247,9 +3242,9 @@ static void IOSTouch_TickHolds(double now)
         _fOpacityRing = 0.0f;
         _fOpacity = 1.0f;
         _bOpacityOpen = 0;
-        _bHudOpacityOpen = 0;
+        IOSTouch_SetHudOpacity(1.0f, 1);
         _ctOpacityResets++;
-        IOSTouch_Message("Opacity back to the default, 100%");
+        IOSTouch_Message("Opacity back to the default, 100%: buttons and HUD");
       }
       else {
         _fOpacityRing = (float)progress;
@@ -3570,7 +3565,6 @@ static void IOSTouch_ResetTouches(int bReading)
   _bLevelListOpen = 0;
   _fFpsRing = 0.0f;
   _fOpacityRing = 0.0f;
-  _fHudRing = 0.0f;
   _fCameraRing = _fCamSwitchRing = 0.0f;
   IOSTouch_ResetShared(bReading);
 }
@@ -3709,7 +3703,6 @@ void IOSTouch_TakeGyro(float *pfYaw, float *pfPitch)
 #define IOSTOUCH_CAMERA_DEFAULTS_KEY @"iosTouchShowCamera"
 // ...and OPACITY's strength (never set: 100%), and its slider's size
 #define IOSTOUCH_OPACITY_DEFAULTS_KEY @"iosTouchOpacity"
-#define IOSTOUCH_OPACITY_W 260.0
 #define IOSTOUCH_OPACITY_H 44.0
 // ...and the HUD (never set: SPLIT, the face on)
 #define IOSTOUCH_HUD_DEFAULTS_KEY @"iosTouchHud"
@@ -3958,12 +3951,11 @@ typedef struct {
   // switches already felt (a thump each)
   CAShapeLayer *fpsRing;
   CAShapeLayer *opacityRing; // the tray's OPACITY: held back to 100%...
-  UIView *opacityBack;       // ...its slider's backing, a row under the tray...
-  UISlider *opacitySlider;   // ...and the slider
-  CAShapeLayer *hudRing;     // the tray's HUD: held, the HUD's strength...
-  UIView *hudOpacityBack;    // ...its slider's backing, a row under the tray (as OPACITY's)...
-  UISlider *hudOpacitySlider;// ...and the slider
-  int ctHudOpacityOpenedFelt;
+  UIView *opacityBack;       // ...its panel under the tray (IOSTouch_OpacityPanel)...
+  UISlider *opacitySlider;   // ...its BUTTONS slider (the controls)...
+  UISlider *hudOpacitySlider;// ...and its HUD slider (the game's HUD)
+  UILabel *opacityValue, *hudOpacityValue; // (each row's value, at its right)
+  int iOpacityValues;        // (what they say: -1 not yet)
   float fOpacityLabel;
   int ctOpacityResetsFelt;
   int iMaxFpsLabel;
@@ -4153,44 +4145,46 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
     ctOpacityResetsFelt = _ctOpacityResets;
     opacityRing = IOSTouch_MakeHoldRing(_aButtons[BTN_TRAYOPACITY].radius);
     [aButtonViews[BTN_TRAYOPACITY].layer addSublayer:opacityRing];
-    opacityBack = [[UIView alloc] initWithFrame:CGRectMake(0, 0, IOSTOUCH_OPACITY_W, IOSTOUCH_OPACITY_H)];
+    // OPACITY's panel: BUTTONS (the controls) and HUD (the game's HUD),
+    // each a label at its left, a slider and its value, stacked
+    IOSTouch_HudPrefs();
+    opacityBack = [[UIView alloc] initWithFrame:CGRectMake(0, 0, IOSTOUCH_OPACITY_PANEL_W,
+                                                           2 * IOSTOUCH_OPACITY_ROW_H + 2 * IOSTOUCH_OPACITY_PANEL_PAD)];
     opacityBack.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.55];
     opacityBack.layer.cornerRadius = IOSTOUCH_OPACITY_H * 0.5;
     opacityBack.layer.borderWidth = 1.5;
     opacityBack.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.4].CGColor;
     opacityBack.hidden = YES;
-    opacitySlider = [[UISlider alloc] initWithFrame:CGRectMake(16, 7, IOSTOUCH_OPACITY_W - 32, 30)];
-    opacitySlider.minimumValue = IOSTOUCH_OPACITY_MIN;
-    opacitySlider.maximumValue = 1.0;
-    opacitySlider.value = _fOpacity;
-    opacitySlider.minimumTrackTintColor = [UIColor colorWithRed:1.0 green:0.75 blue:0.3 alpha:0.95];
-    [opacitySlider addTarget:self action:@selector(opacitySlid:) forControlEvents:UIControlEventValueChanged];
-    [opacitySlider addTarget:self action:@selector(opacityLifted:)
-            forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
-    [opacityBack addSubview:opacitySlider];
+    for (int row = 0; row < 2; row++) {
+      const CGFloat y = IOSTOUCH_OPACITY_PANEL_PAD + row * IOSTOUCH_OPACITY_ROW_H;
+      UILabel *name = [[UILabel alloc] initWithFrame:CGRectMake(14, y, IOSTOUCH_OPACITY_LABEL_W - 14, IOSTOUCH_OPACITY_ROW_H)];
+      name.text = row ? @"HUD" : @"BUTTONS";
+      name.font = IOSTouch_TrayFont(12);
+      name.textColor = [UIColor colorWithWhite:1.0 alpha:0.9];
+      name.adjustsFontSizeToFitWidth = YES;
+      name.minimumScaleFactor = 0.7;
+      [opacityBack addSubview:name];
+      UISlider *sl = [[UISlider alloc] initWithFrame:CGRectMake(IOSTOUCH_OPACITY_LABEL_W, y + 5,
+                                                                IOSTOUCH_OPACITY_PANEL_W - IOSTOUCH_OPACITY_LABEL_W - IOSTOUCH_OPACITY_VALUE_W - 6, 30)];
+      sl.minimumValue = IOSTOUCH_OPACITY_MIN;
+      sl.maximumValue = 1.0;
+      sl.value = row ? _fHudOpacity : _fOpacity;
+      sl.minimumTrackTintColor = [UIColor colorWithRed:1.0 green:0.75 blue:0.3 alpha:0.95];
+      [sl addTarget:self action:@selector(opacitySlid:) forControlEvents:UIControlEventValueChanged];
+      [sl addTarget:self action:@selector(opacityLifted:)
+          forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
+      [opacityBack addSubview:sl];
+      UILabel *value = [[UILabel alloc] initWithFrame:CGRectMake(IOSTOUCH_OPACITY_PANEL_W - IOSTOUCH_OPACITY_VALUE_W - 6, y,
+                                                                 IOSTOUCH_OPACITY_VALUE_W, IOSTOUCH_OPACITY_ROW_H)];
+      value.font = IOSTouch_TrayFont(12);
+      value.textColor = [UIColor colorWithWhite:1.0 alpha:0.9];
+      value.textAlignment = NSTextAlignmentRight;
+      [opacityBack addSubview:value];
+      if (row) { hudOpacitySlider = sl; hudOpacityValue = value; }
+      else { opacitySlider = sl; opacityValue = value; }
+    }
+    iOpacityValues = -1;
     [self addSubview:opacityBack];
-    // The tray's HUD held: the HUD's strength (kept; 100% unless changed),
-    // its ring and its slider, as OPACITY's
-    IOSTouch_HudPrefs();
-    hudRing = IOSTouch_MakeHoldRing(_aButtons[BTN_TRAYHUD].radius);
-    [aButtonViews[BTN_TRAYHUD].layer addSublayer:hudRing];
-    ctHudOpacityOpenedFelt = _ctHudOpacityOpened;
-    hudOpacityBack = [[UIView alloc] initWithFrame:CGRectMake(0, 0, IOSTOUCH_OPACITY_W, IOSTOUCH_OPACITY_H)];
-    hudOpacityBack.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.55];
-    hudOpacityBack.layer.cornerRadius = IOSTOUCH_OPACITY_H * 0.5;
-    hudOpacityBack.layer.borderWidth = 1.5;
-    hudOpacityBack.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.4].CGColor;
-    hudOpacityBack.hidden = YES;
-    hudOpacitySlider = [[UISlider alloc] initWithFrame:CGRectMake(16, 7, IOSTOUCH_OPACITY_W - 32, 30)];
-    hudOpacitySlider.minimumValue = IOSTOUCH_OPACITY_MIN;
-    hudOpacitySlider.maximumValue = 1.0;
-    hudOpacitySlider.value = _fHudOpacity;
-    hudOpacitySlider.minimumTrackTintColor = [UIColor colorWithRed:1.0 green:0.75 blue:0.3 alpha:0.95];
-    [hudOpacitySlider addTarget:self action:@selector(hudOpacitySlid:) forControlEvents:UIControlEventValueChanged];
-    [hudOpacitySlider addTarget:self action:@selector(hudOpacityLifted:)
-               forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
-    [hudOpacityBack addSubview:hudOpacitySlider];
-    [self addSubview:hudOpacityBack];
     [self applyMaxFps];
     [self applyMaxFps];
     UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold];
@@ -4455,43 +4449,32 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
   (void)link;
 }
 
-// OPACITY's slider: the controls follow it as it slides, the strength is
-// kept as it lifts
+// OPACITY's panel's sliders: BUTTONS, the controls follow it as it slides;
+// HUD, the game's HUD (IOSTouch_GetHudLayout's fAlpha); each kept as it lifts
 - (void)opacitySlid:(UISlider *)slider
 {
+  const int bHud = (slider == hudOpacitySlider);
   if (!_bOpacityOpen || !_bTrayOpen) {
-    slider.value = _fOpacity;
+    slider.value = bHud ? _fHudOpacity : _fOpacity;
     return;
   }
-  _fOpacity = IOSTouch_OpacityStep(slider.value);
+  if (bHud) IOSTouch_SetHudOpacity(slider.value, 0);
+  else _fOpacity = IOSTouch_OpacityStep(slider.value);
   [self refreshButtonLooks];
-  [self refreshStick];
+  if (!bHud) [self refreshStick];
 }
 
 - (void)opacityLifted:(UISlider *)slider
 {
   [self opacitySlid:slider];
-  slider.value = _fOpacity;
-  [[NSUserDefaults standardUserDefaults] setFloat:_fOpacity forKey:IOSTOUCH_OPACITY_DEFAULTS_KEY];
-}
-
-// The HUD's slider (the tray's HUD held): the game's HUD follows it as it
-// slides (IOSTouch_GetHudLayout's fAlpha), the strength is kept as it lifts
-- (void)hudOpacitySlid:(UISlider *)slider
-{
-  if (!_bHudOpacityOpen || !_bTrayOpen) {
+  if (slider == hudOpacitySlider) {
     slider.value = _fHudOpacity;
-    return;
+    IOSTouch_SetHudOpacity(_fHudOpacity, 1);
   }
-  IOSTouch_SetHudOpacity(slider.value, 0);
-  [self refreshButtonLooks];
-}
-
-- (void)hudOpacityLifted:(UISlider *)slider
-{
-  [self hudOpacitySlid:slider];
-  slider.value = _fHudOpacity;
-  IOSTouch_SetHudOpacity(_fHudOpacity, 1);
+  else {
+    slider.value = _fOpacity;
+    [[NSUserDefaults standardUserDefaults] setFloat:_fOpacity forKey:IOSTOUCH_OPACITY_DEFAULTS_KEY];
+  }
 }
 
 // What the tray's FPS says: the frame rate asked for ("FPS\n60")
@@ -4532,30 +4515,22 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
     fOpacityLabel = _fOpacity;
     aButtonViews[BTN_TRAYOPACITY].text = [NSString stringWithFormat:@"OPACITY\n%d%%", (int)lroundf(_fOpacity * 100.0f)];
   }
-  // OPACITY's slider: a row under the tray, under OPACITY (kept on screen),
-  // while it's open
+  // OPACITY's panel: under OPACITY (IOSTouch_OpacityPanel: kept clear of
+  // the corners and the home indicator), while it's open; its values
   {
     const int bShow = _bOpacityOpen && _bTrayOpen;
     if (bShow) {
-      const CGFloat w = IOSTOUCH_OPACITY_W, h = IOSTOUCH_OPACITY_H;
-      const CGFloat cx = fmax(fmin(_aButtons[BTN_TRAYOPACITY].x, self.bounds.size.width - self.safeAreaInsets.right - 8 - w * 0.5),
-                              self.safeAreaInsets.left + 8 + w * 0.5);
-      opacityBack.frame = CGRectMake(round(cx - w * 0.5), round(_aButtons[BTN_TRAYOPACITY].y + 52 + 18 - h * 0.5), w, h);
+      const IOSTouchRect r = IOSTouch_OpacityPanel();
+      opacityBack.frame = CGRectMake(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
       [self bringSubviewToFront:opacityBack];
+      const int iValues = (int)lroundf(_fOpacity * 100.0f) * 1000 + (int)lroundf(_fHudOpacity * 100.0f);
+      if (iValues != iOpacityValues) {
+        iOpacityValues = iValues;
+        opacityValue.text = [NSString stringWithFormat:@"%d%%", (int)lroundf(_fOpacity * 100.0f)];
+        hudOpacityValue.text = [NSString stringWithFormat:@"%d%%", (int)lroundf(_fHudOpacity * 100.0f)];
+      }
     }
     if (opacityBack.hidden == bShow) opacityBack.hidden = !bShow;
-  }
-  // ...and the HUD's, under HUD
-  {
-    const int bShow = _bHudOpacityOpen && _bTrayOpen;
-    if (bShow) {
-      const CGFloat w = IOSTOUCH_OPACITY_W, h = IOSTOUCH_OPACITY_H;
-      const CGFloat cx = fmax(fmin(_aButtons[BTN_TRAYHUD].x, self.bounds.size.width - self.safeAreaInsets.right - 8 - w * 0.5),
-                              self.safeAreaInsets.left + 8 + w * 0.5);
-      hudOpacityBack.frame = CGRectMake(round(cx - w * 0.5), round(_aButtons[BTN_TRAYHUD].y + 52 + 18 - h * 0.5), w, h);
-      [self bringSubviewToFront:hudOpacityBack];
-    }
-    if (hudOpacityBack.hidden == bShow) hudOpacityBack.hidden = !bShow;
   }
   for (int i = 0; i < IOSTOUCH_NUM_BUTTONS; i++) {
     UILabel *l = aButtonViews[i];
@@ -4658,7 +4633,6 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
   [self setRing:menuRing progress:_fMenuRing];
   [self setRing:fpsRing progress:_fFpsRing];
   [self setRing:opacityRing progress:_fOpacityRing];
-  [self setRing:hudRing progress:_fHudRing];
   [self setRing:lookRing progress:_fLookRing];
   [self setRing:cheatRing progress:_fCheatRing];
   [self setRing:cameraRing progress:_fCameraRing];
@@ -5152,7 +5126,6 @@ static void IOSTouch_DrawWheelTheme(const IOSTouchWheelTheme *t, CGPoint c, doub
   [self setRing:menuRing progress:_fMenuRing];
   [self setRing:fpsRing progress:_fFpsRing];
   [self setRing:opacityRing progress:_fOpacityRing];
-  [self setRing:hudRing progress:_fHudRing];
   [self setRing:lookRing progress:_fLookRing];
   [self setRing:cheatRing progress:_fCheatRing];
   [self setRing:cameraRing progress:_fCameraRing];
@@ -5171,21 +5144,15 @@ static void IOSTouch_DrawWheelTheme(const IOSTouchWheelTheme *t, CGPoint c, doub
     [fpsThump impactOccurred];
     [self refreshButtonLooks];
   }
-  // OPACITY held: back to 100% (a thump, the controls, the slider)
+  // OPACITY held: both back to 100% (a thump, the controls, the sliders)
   if (ctOpacityResetsFelt != _ctOpacityResets) {
     ctOpacityResetsFelt = _ctOpacityResets;
     [fpsThump impactOccurred];
     opacitySlider.value = _fOpacity;
+    hudOpacitySlider.value = _fHudOpacity; // (both back to 100%; the HUD's kept by the core)
     [[NSUserDefaults standardUserDefaults] setFloat:_fOpacity forKey:IOSTOUCH_OPACITY_DEFAULTS_KEY];
     [self refreshButtonLooks];
     [self refreshStick];
-  }
-  // HUD held: its slider opens (a thump; the slider at the HUD's strength)
-  if (ctHudOpacityOpenedFelt != _ctHudOpacityOpened) {
-    ctHudOpacityOpenedFelt = _ctHudOpacityOpened;
-    [fpsThump impactOccurred];
-    hudOpacitySlider.value = _fHudOpacity;
-    [self refreshButtonLooks];
   }
   // FPS held: 60 or 120 (a thump, its label, the screen asked)
   if (ctMaxFpsFelt != _ctMaxFpsChanges) {
@@ -5207,8 +5174,7 @@ static void IOSTouch_DrawWheelTheme(const IOSTouchWheelTheme *t, CGPoint c, doub
       || aButtonViews[BTN_TRAYGAMES].hidden == IOSTouch_IsShown(BTN_TRAYGAMES)
       || aButtonViews[BTN_CAMERA].hidden == IOSTouch_IsShown(BTN_CAMERA)
       || _bTrayOpen != bTrayWasOpen || _iFpsShown != iFpsWas || iShownNow != iShownWas
-      || opacityBack.hidden == (_bOpacityOpen && _bTrayOpen)
-      || hudOpacityBack.hidden == (_bHudOpacityOpen && _bTrayOpen)) {
+      || opacityBack.hidden == (_bOpacityOpen && _bTrayOpen)) {
     [self refreshButtonLooks];
     [self refreshStick];
   }

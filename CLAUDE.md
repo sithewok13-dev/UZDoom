@@ -68,11 +68,11 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   armour, bottom right ammo | keys, FIRE and its arc lifted 14 pt above
   them; STRIP one pill in the middle (shrunk to stay clear of the
   buttons); CLASSIC the status bar, FIRE and its arc above it (its top
-  from the game, `fBarTop`). The face is the status bar's mugshot. HUD
-  held 0.45 s (ring): a slider under the tray, as OPACITY's (live, kept on
-  lift; `iosTouchHudOpacity`, 20%-100% in 5% steps, default 100%) fading
-  the pills and their contents, and CLASSIC's status bar (`Alpha`; it dims
-  over the view's border, the view doesn't reach under it).
+  from the game, `fBarTop`). The face is the status bar's mugshot. The
+  HUD's strength is OPACITY's panel's HUD slider (`iosTouchHudOpacity`,
+  20%-100%, default 100%): it fades the pills and their contents, and
+  CLASSIC's status bar (`Alpha`; it dims over the view's border, the view
+  doesn't reach under it).
 - **LEVEL** (tray, any single-player level, cheat or not; gold while the
   cheat is on): the game's maps in MAPINFO's order (add-ons' too), the game
   held still while open; a tap is `map <lump>`: a new game at that map
@@ -151,10 +151,10 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   1 -width 1688 -height 780 +vid_fullscreen 0 -nosound -exec <cfg>`,
   `HOME=<scratch>`, `IOSCAM_DIR=<photos>`. Vulkan runs on llvmpipe there.
   `IOSRIG_SCREEN="956 440 62 0 62 21"` sets the rig's phone (points, insets;
-  default the iPhone 14's 844x390); the tray's HUD/FACE/HUD strength are
-  kept in `$HOME/.iosrig-hud` (the phone's NSUserDefaults); `ios_rig
-  hudslide <0.2-1>` moves the open HUD slider, `ios_rig lookstats` prints
-  the look line.
+  default the iPhone 14's 844x390); the tray's HUD, FACE and both
+  strengths are kept in `$HOME/.iosrig-hud` (the phone's NSUserDefaults);
+  `ios_rig opacityslide <buttons|hud> <0.2-1>` moves a slider of the open
+  OPACITY panel, `ios_rig lookstats` prints the look line.
   `wait` only works inside one line: join the script's lines with `;`.
 - Commands: `ios_rig down/move/up <id> <x y | @BUTTON>` (`@MENU`,
   `@TRAYLOOK`, `@TRAYCHEAT`, `@SAVE`, `@CAMERA`...), `ios_rig tapslice
@@ -194,8 +194,7 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   - SAVE / LOAD: tap = DOOM's Save Game / Load Game menu; a 0.3 s hold with
     a ring = quick save / quick load. Sliding off cancels; SAVE wins a tie.
   - MENU: tap = game menu; hold 0.45 s = tray with LOOK, ALWAYS RUN, SENS,
-    GYRO, OPACITY, HUD (tap: the next look; held: its strength's slider),
-    FACE, FPS, CAMERA, CHEAT, LEVEL (single player, in a level),
+    GYRO, OPACITY, HUD (the next look), FACE, FPS, CAMERA, CHEAT, LEVEL (single player, in a level),
     NOCLIP (the cheat on), GAMES (more than one game), keyboard (the
     console), and the build stamp under it.
   - LOOK: the drag's look speed, shown on it ("LOOK 1x"); a tap steps 0.5,
@@ -208,9 +207,11 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   - GYRO: OFF (default) / TOUCH (aims while either thumb is down; lifting
     both freezes the view) / ALWAYS. SENS 1.0/1.5/2.0/3.0 (the gyro's
     only), default 1.5. Remembered.
-  - OPACITY: tap = a slider under the tray, 20% to 100% in 5% steps, live,
-    saved on lift (`iosTouchOpacity`, default 100%); hold = back to 100%.
-    The controls follow it; the tray and the wheel stay at full.
+  - OPACITY: tap = a panel under the tray (`IOSTouch_OpacityPanel`) with
+    two sliders, BUTTONS (the controls: `iosTouchOpacity`) and HUD (the
+    game's HUD: `iosTouchHudOpacity`), each 20% to 100% in 5% steps, live,
+    saved on lift, default 100%; hold = both back to 100% (toast, haptic).
+    The tray and the wheel stay at full.
   - FPS: tap = show/hide the FPS readout; held 0.45 s (ring) = 60 <-> 120
     ("FPS\n60", default 60) with a toast and a haptic. Remembered.
   - NEXT WPN / PREV WPN: tap = next/previous; a 10 pt slide opens the
