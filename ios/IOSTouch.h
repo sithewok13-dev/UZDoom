@@ -29,7 +29,8 @@
        pickup sprite from the loaded game and its ammo. The game holds still
        while it is open.
      - MENU's tray: LOOK (0.5x to 3x), ALWAYS RUN, SENS, GYRO, OPACITY,
-       FPS (60/120), CAMERA, CHEAT, LEVEL (single player, in a level),
+       HUD (SPLIT, STRIP, CLASSIC, NONE), FACE (in the HUD), FPS (60/120),
+       CAMERA, CHEAT, LEVEL (single player, in a level),
        NOCLIP (the cheat on), GAMES (more than one game found: "Switch
        game") and the keyboard (the console, for typing cheats and
        commands), with the build stamp under it.
@@ -70,6 +71,8 @@ typedef struct IOSTouchHud {
   int ctLevels;        /* the levels the tray's LEVEL lists (0: none) */
   unsigned int uWorld; /* changes with every level started or loaded */
   float afHudFrame[4]; /* (filled by the overlay: IOSTouch_GetHudFrame) */
+  float fBarTop;       /* the HUD CLASSIC: the top of DOOM's status bar, a fraction of the screen's
+                          height from the top (0: none shows); FIRE and its arc keep above it */
 } IOSTouchHud;
 
 /* What the player asked for, carried out by the game (IOSTouch_Update's result) */
@@ -152,6 +155,23 @@ int IOSTouch_Update(void *pSDLWindow, int iMode, const IOSTouchHud *pHud, unsign
    home indicator and a notch, as x0, y0, x1, y1 fractions of the screen. The
    whole screen until IOSTouch_Update has seen SDL's view. */
 void IOSTouch_GetHudFrame(float afFrame[4]);
+/* The HUD (MENU's tray's HUD and FACE, remembered; IOSGame.cpp and the
+   Doom status bar's ZScript draw it): SPLIT, two pills at the bottom (you
+   on the left; the gun and the keys on the right: FIRE and its arc move up
+   clear of it), STRIP (one pill in the middle), CLASSIC (DOOM's status
+   bar: FIRE and its arc keep above it) or NONE; FACE, the doomguy's face in
+   the pills. Where the pills go, in fractions of the screen: */
+enum { IOSTOUCH_HUD_SPLIT = 0, IOSTOUCH_HUD_STRIP, IOSTOUCH_HUD_CLASSIC, IOSTOUCH_HUD_NONE, IOSTOUCH_HUD_COUNT };
+typedef struct IOSTouchHudLayout {
+  int iStyle;          /* IOSTOUCH_HUD_* */
+  int bFace;           /* the face in the pills */
+  float fPillH;        /* a pill's height (of the screen's height) */
+  float fPillBottom;   /* the pills' bottom edge (of the height, from the top) */
+  float fLeft, fRight; /* SPLIT's pills' outer edges (of the width) */
+  float fStripHalf;    /* STRIP: its pill reaches at most this far either side of the middle (of the width),
+                          clear of the buttons */
+} IOSTouchHudLayout;
+void IOSTouch_GetHudLayout(IOSTouchHudLayout *pLayout);
 /* The frame rate asked for in the tray (FPS held): 60 or 120. The screen is
    asked for it. */
 int IOSTouch_MaxFps(void);
@@ -189,6 +209,16 @@ void IOSTouch_CheatLevelFailed(void); /* the level picked couldn't be started */
    overlay asks once (IOSTouch_WantsCheatIcon); NULL: none, CHEAT says CHEAT */
 int IOSTouch_WantsCheatIcon(void);
 void IOSTouch_SetCheatIcon(const unsigned char *pubRGBA, int iWidth, int iHeight);
+/* ...or, where the game has DOOM's pentagram wall (MWALL4_1), the round
+   icon made of it, on and off (iSize x iSize RGBA, not premultiplied): its
+   red circle is the button's edge (no ring drawn round it), the button
+   IOSTOUCH_CHEAT_ICON_FILL of the picture's width; IOSTouch_CheatIconPixels:
+   the picture's width wanted (the button's, in the screen's pixels, divided
+   by IOSTOUCH_CHEAT_ICON_FILL) */
+#define IOSTOUCH_CHEAT_ICON_FILL (1.0 / 1.16)
+#define IOSTOUCH_CHEAT_ICON_MAX 512
+int IOSTouch_CheatIconPixels(void);
+void IOSTouch_SetCheatRoundIcons(const unsigned char *pubOn, const unsigned char *pubOff, int iSize);
 /* A line of news over the game for fSeconds */
 void IOSTouch_ShowMessage(const char *str, double fSeconds);
 

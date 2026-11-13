@@ -293,6 +293,8 @@ class BaseStatusBar : StatusBarCore native
 
 	// These functions are kept native solely for performance reasons. They get called repeatedly and can drag down performance easily if they get too slow.
 	native static TextureID, bool GetInventoryIcon(Inventory item, int flags);
+	// Added (iOS touch): the touch HUD's layout (0: its style, -1 without the touch controls; see shared_sbar.cpp)
+	native static double IOSHud(int which);
 
 	//---------------------------------------------------------------------------
 	//

@@ -29,12 +29,15 @@
 
 #include "../IOSTouch.m"
 
-#define RIG_W 844.0
-#define RIG_H 390.0
-#define RIG_IN_LEFT 47.0
-#define RIG_IN_TOP 0.0
-#define RIG_IN_RIGHT 47.0
-#define RIG_IN_BOTTOM 21.0
+// (IOSRIG_SCREEN="W H left top right bottom" sets another phone: e.g. the
+// iPhone 16 Pro Max's "956 440 62 0 62 21", the HUD mockups' screen)
+static double _afRigScreen[6] = { 844.0, 390.0, 47.0, 0.0, 47.0, 21.0 };
+#define RIG_W _afRigScreen[0]
+#define RIG_H _afRigScreen[1]
+#define RIG_IN_LEFT _afRigScreen[2]
+#define RIG_IN_TOP _afRigScreen[3]
+#define RIG_IN_RIGHT _afRigScreen[4]
+#define RIG_IN_BOTTOM _afRigScreen[5]
 
 static double IOSTouchRig_Now(void)
 {
@@ -49,12 +52,58 @@ static void IOSTouch_GyroRunUpdates(int bRun)
   (void)bRun;
 }
 
+// The HUD's settings (the view's NSUserDefaults): a file, $HOME/.iosrig-hud
+// ("<style> <face>"), so a restart keeps them as the phone does
+static void IOSTouchRig_HudPrefsPath(char *path, size_t size)
+{
+  const char *home = getenv("HOME");
+  snprintf(path, size, "%s/.iosrig-hud", home ? home : ".");
+}
+
+static void IOSTouch_LoadHudPrefs(void)
+{
+  char path[512];
+  IOSTouchRig_HudPrefsPath(path, sizeof(path));
+  FILE *f = fopen(path, "r");
+  if (!f) return;
+  int style = 0, face = 1;
+  if (fscanf(f, "%d %d", &style, &face) == 2) {
+    _iHudStyle = style;
+    _bHudFace = face;
+  }
+  fclose(f);
+  printf("rig: hud prefs loaded: style %d face %d\n", _iHudStyle, _bHudFace);
+}
+
+static void IOSTouch_SaveHudPrefs(void)
+{
+  char path[512];
+  IOSTouchRig_HudPrefsPath(path, sizeof(path));
+  FILE *f = fopen(path, "w");
+  if (!f) return;
+  fprintf(f, "%d %d\n", _iHudStyle, _bHudFace);
+  fclose(f);
+}
+
+// (the reference pictures' size: the owner's phone's button, 130 px)
+int IOSTouch_CheatIconPixels(void)
+{
+  return (int)(130.0 / IOSTOUCH_CHEAT_ICON_FILL);
+}
+
 static int _bRigLaidOut = 0;
 static unsigned int _ulRigFrames = 0;
 
 static void IOSTouchRig_Layout(void)
 {
   const IOSTouchRect none = { 0, 0, 0, 0, 0 };
+  static int bScreenRead = 0;
+  if (!bScreenRead) {
+    bScreenRead = 1;
+    const char *env = getenv("IOSRIG_SCREEN");
+    double a[6];
+    if (env && sscanf(env, "%lf %lf %lf %lf %lf %lf", &a[0], &a[1], &a[2], &a[3], &a[4], &a[5]) == 6) memcpy(_afRigScreen, a, sizeof(a));
+  }
   IOSTouch_LayoutButtons(RIG_W, RIG_H, RIG_IN_LEFT, RIG_IN_TOP, RIG_IN_RIGHT, RIG_IN_BOTTOM, 1, &none, &none, &none);
   IOSTouch_SetHudFrame(RIG_W, RIG_H, RIG_IN_LEFT, RIG_IN_TOP, RIG_IN_RIGHT, RIG_IN_BOTTOM);
   _bRigLaidOut = 1;
@@ -81,7 +130,7 @@ int IOSTouch_Update(void *pSDLWindow, int iMode, const IOSTouchHud *pHud, unsign
   _iRequests = 0;
   _ulRigFrames = ulFramesDrawn;
   if (pHud) _hud = *pHud;
-  if (!_bRigLaidOut) IOSTouchRig_Layout();
+  if (!_bRigLaidOut || IOSTouch_LayoutKey() != _iLaidOutKey) IOSTouchRig_Layout();
   if (iMode != _iMode) IOSTouchRig_SetMode(iMode);
   if (iMode != IOSTOUCH_HIDDEN) {
     const double now = CACurrentMediaTime();
@@ -107,7 +156,8 @@ static const struct { const char *name; int button; } _aRigNames[] = {
   { "NEXTWPN", BTN_NEXTWPN }, { "PREVWPN", BTN_PREVWPN }, { "MAP", BTN_MAP }, { "CHEAT", BTN_CHEAT }, { "CAMERA", BTN_CAMERA },
   { "SAVE", BTN_QUICKSAVE }, { "LOAD", BTN_QUICKLOAD }, { "QUICKSAVE", BTN_QUICKSAVE }, { "QUICKLOAD", BTN_QUICKLOAD },
   { "MENU", BTN_MENU }, { "RESUME", BTN_RESUME }, { "TRAYLOOK", BTN_TRAYLOOK }, { "TRAYRUN", BTN_TRAYRUN },
-  { "TRAYSENS", BTN_TRAYSENS }, { "TRAYGYRO", BTN_TRAYGYRO }, { "TRAYOPACITY", BTN_TRAYOPACITY }, { "TRAYFPS", BTN_TRAYFPS },
+  { "TRAYSENS", BTN_TRAYSENS }, { "TRAYGYRO", BTN_TRAYGYRO }, { "TRAYOPACITY", BTN_TRAYOPACITY },
+  { "TRAYHUD", BTN_TRAYHUD }, { "TRAYFACE", BTN_TRAYFACE }, { "TRAYFPS", BTN_TRAYFPS },
   { "TRAYCAM", BTN_TRAYCAM }, { "TRAYCHEAT", BTN_TRAYCHEAT }, { "TRAYLEVEL", BTN_TRAYLEVEL }, { "TRAYNOCLIP", BTN_TRAYNOCLIP },
   { "TRAYGAMES", BTN_TRAYGAMES }, { "TRAYKEYS", BTN_TRAYKEYS },
 };
@@ -179,6 +229,18 @@ static void IOSTouchRig_State(void)
          _astrModes[_iMode], _bReading, _bTrayOpen, _bShowCheat, _bCheatOn, _bLevelListOpen, _bWheelOpen, _bWheelTapMode,
          IOSTouch_WheelHot(), IOSTouch_HoldsGame(), _bShowFps, _iFpsShown, _iMaxFps, _iGyroMode, (double)_afGyroSens[_iGyroSens],
          (double)_fLookScale, (double)_fOpacity, _bOpacityOpen, _bMoveRun, _hud.bRunOn, _bRunMarker, _bShowCamera, _bTrayLevelPlaced);
+  {
+    IOSTouchHudLayout hl;
+    IOSTouch_GetHudLayout(&hl);
+    printf("rig: hud style %d face %d barTop %.3f pills top %.1f bottom %.1f left %.1f right %.1f striphalf %.1f (frac h %.4f bottom %.4f l %.4f r %.4f half %.4f)\n",
+           hl.iStyle, hl.bFace, (double)_hud.fBarTop, _fPillTop, _fPillBottom, _fPillLeft, _fPillRight, _fStripHalf, (double)hl.fPillH,
+           (double)hl.fPillBottom, (double)hl.fLeft, (double)hl.fRight, (double)hl.fStripHalf);
+    printf("rig: buttons");
+    for (int i = 0; i < IOSTOUCH_NUM_BUTTONS; i++) {
+      printf(" %s(%.1f,%.1f,r%.0f)", IOSTouchRig_ButtonName(i), _aButtons[i].x, _aButtons[i].y, _aButtons[i].radius);
+    }
+    printf("\n");
+  }
   printf("rig: shown");
   for (int i = 0; i < IOSTOUCH_NUM_BUTTONS; i++) {
     if (IOSTouch_IsShown(i)) printf(" %s(%.0f,%.0f)", IOSTouchRig_ButtonName(i), _aButtons[i].x, _aButtons[i].y);

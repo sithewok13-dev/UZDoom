@@ -646,6 +646,29 @@ DEFINE_ACTION_FUNCTION(DBaseStatusBar, DoDrawAutomapHUD)
 
 //---------------------------------------------------------------------------
 //
+// Added (iOS touch): the touch HUD's layout for the Doom status bar's
+// ZScript (ios/IOSGame.h's IOSGame_HudValue: 0 the style, -1 without the
+// touch controls; 1 the face; 2.. where its pills go, in the 2D drawer's
+// pixels)
+//
+//---------------------------------------------------------------------------
+
+#ifdef DOOM_TOUCH
+#include "../../ios/IOSGame.h"
+#endif
+DEFINE_ACTION_FUNCTION(DBaseStatusBar, IOSHud)
+{
+	PARAM_PROLOGUE;
+	PARAM_INT(which);
+#ifdef DOOM_TOUCH
+	ACTION_RETURN_FLOAT(IOSGame_HudValue(which, twod->GetWidth(), twod->GetHeight()));
+#else
+	ACTION_RETURN_FLOAT(which == 0 ? -1.0 : 0.0);
+#endif
+}
+
+//---------------------------------------------------------------------------
+//
 // PROC AttachToPlayer
 //
 //---------------------------------------------------------------------------

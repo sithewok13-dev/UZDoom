@@ -1326,13 +1326,14 @@ void D_Display ()
 
 #ifdef DOOM_TOUCH
 	// Added (iOS touch): the CAMERA's photo view fills the screen (no room
-	// kept for the status bar, which it doesn't draw); the view's size put
-	// back as it ends
+	// kept for the status bar, which it doesn't draw), as does the view with
+	// the touch HUD's pills or none (MENU's tray's HUD: all but CLASSIC);
+	// the view's size put back as they end
 	{
 		static int iosKeptBlocks = -1;
-		if (IOSCamera_HidesHud() && gamestate == GS_LEVEL)
+		if ((IOSCamera_HidesHud() && gamestate == GS_LEVEL) || IOSGame_HudFills())
 		{
-			if (iosKeptBlocks < 0 && setblocks < 11)
+			if (setblocks < 11)
 			{
 				iosKeptBlocks = setblocks;
 				R_SetViewSize(11);
@@ -1441,9 +1442,15 @@ void D_Display ()
 		{
 			V_DrawBlend(viewsec);
 
+#ifdef DOOM_TOUCH
+			// Added (iOS touch): the touch HUD's pills (or none) over the automap too
+			const int iosHudState = IOSGame_HudState();
+#else
+			const int iosHudState = -1;
+#endif
 			if (automapactive)
 			{
-				if (viewheight == SCREENHEIGHT && (hud_althud || am_match_statusbar))
+				if (viewheight == SCREENHEIGHT && (hud_althud || am_match_statusbar || iosHudState >= 0))
 				{
 					primaryLevel->automap->Drawer (viewheight);
 				}
@@ -1461,7 +1468,16 @@ void D_Display ()
 			{
 				StatusBar->RefreshViewBorder ();
 			}
-			if (hud_althud && viewheight == SCREENHEIGHT && screenblocks > 10)
+			if (iosHudState >= 0 && viewheight == SCREENHEIGHT)
+			{
+				// Added (iOS touch): the touch HUD (SPLIT, STRIP: the Doom status
+				// bar's pills, drawn as its full-screen HUD; NONE: none)
+				const EHudState state = (EHudState)iosHudState;
+				StatusBar->DrawBottomStuff (state);
+				StatusBar->CallDraw (state, vp.TicFrac);
+				StatusBar->DrawTopStuff (state);
+			}
+			else if (hud_althud && viewheight == SCREENHEIGHT && screenblocks > 10)
 			{
 				StatusBar->DrawBottomStuff (HUD_AltHud);
 				if (DrawFSHUD || automapactive) StatusBar->DrawAltHUD();

@@ -43,13 +43,32 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
 - **The cheat (`sithewok`):** the tray's CHEAT shows the CHEAT button and
   switches the cheat on, or tapped again leaves cheat mode; CHEAT held
   0.5 s (gold ring) = on (gold, the doomguy's god-mode face in colour) /
-  off (grey); a tap does nothing. Its picture is `STFGOD0` from the
-  player's own data (else `STFST01`), drawn at run time (`FeedCheatIcon`);
-  coming on plays the power-up pickup sound (`misc/p_pkup`, DSGETPOW);
-  off is silent. Typing `sithewok` in the console toggles it. While on
+  off (grey); a tap does nothing. Its picture is made at run time from the
+  player's own wall `MWALL4_1` (the demon's face in a pentagram: DOOM, DOOM
+  II, TNT, Plutonia), the owner's approved recipe ported from Python
+  (`CheatWallIcon`/`CheatButton` in `IOSGame.cpp`): eyes lit, the wall's
+  star painted out and redrawn evenly, cut round so its red circle is the
+  button's edge (no ring drawn; off: grey at 60%); without that wall the
+  god-mode face `STFGOD0` (else `STFST01`) with the gold/grey ring.
+  Coming on plays DOOM II's Icon of Sin cube spit (`brain/spit`, DSBOSPIT)
+  whole; in DOOM (no DSBOSPIT) read at run time from a `doom2.wad` beside
+  the IWAD (the app's Documents) if there is one, else the power-up pickup
+  (`misc/p_pkup`). Off is silent. Typing `sithewok` in the console toggles it. While on
   (single player, where the game's cheats work): god mode and `give all`,
   again at each new level, ammo kept full; the tray's NOCLIP (the game's
   noclip). Off each launch; the button's showing is remembered.
+- **HUD** (tray's HUD: SPLIT -> STRIP -> CLASSIC -> NONE, default SPLIT;
+  FACE on/off; NSUserDefaults `iosTouchHud`, `iosTouchHudFace`): SPLIT,
+  STRIP and NONE fill the screen with the view (`setblocks` 11, as the
+  CAMERA does; `IOSGame_HudState` in `D_Display`); SPLIT/STRIP draw dark
+  rounded pills of DOOM's own graphics in the Doom status bar's ZScript
+  (`DoomStatusBar.DrawIOSHud`, sizes from `BaseStatusBar.IOSHud` =
+  `IOSTouch_GetHudLayout`: the approved mockups' 64 px pill at 2000x921,
+  scaled with the screen's height): SPLIT bottom left [face] | health |
+  armour, bottom right ammo | keys, FIRE and its arc lifted 14 pt above
+  them; STRIP one pill in the middle (shrunk to stay clear of the
+  buttons); CLASSIC the status bar, FIRE and its arc above it (its top
+  from the game, `fBarTop`). The face is the status bar's mugshot.
 - **LEVEL** (tray, any single-player level, cheat or not; gold while the
   cheat is on): the game's maps in MAPINFO's order (add-ons' too), the game
   held still while open; a tap is `map <lump>`: a new game at that map
@@ -119,12 +138,16 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
 - Run under `xvfb-run -s "-screen 0 1688x780x24"` with `-iwad <wad> -warp
   1 -width 1688 -height 780 +vid_fullscreen 0 -nosound -exec <cfg>`,
   `HOME=<scratch>`, `IOSCAM_DIR=<photos>`. Vulkan runs on llvmpipe there.
+  `IOSRIG_SCREEN="956 440 62 0 62 21"` sets the rig's phone (points, insets;
+  default the iPhone 14's 844x390); the tray's HUD/FACE are kept in
+  `$HOME/.iosrig-hud` (the phone's NSUserDefaults).
   `wait` only works inside one line: join the script's lines with `;`.
 - Commands: `ios_rig down/move/up <id> <x y | @BUTTON>` (`@MENU`,
   `@TRAYLOOK`, `@TRAYCHEAT`, `@SAVE`, `@CAMERA`...), `ios_rig tapslice
   <i>`, `ios_rig picklevel <i>`, `ios_rig gyro <yaw> <pitch>`, `ios_rig
   state`; `ios_rigpos` (the player), `ios_rigweapons`, `ios_riglevels`,
-  `ios_rigicons <dir>`, `ios_rigactive 0/1`; `ios_cam photo | selfie |
+  `ios_rigicons <dir>`, `ios_rigcheaticon <dir> [px]` (CHEAT's icons as
+  raw RGBA), `ios_rigcheatsound`, `ios_rigactive 0/1`; `ios_cam photo | selfie |
   burst | freeze | cinema | end | orbit y p | pan r d | zoom f | kinds n |
   selfies n | hash | status | gather n` (gather moves monsters: rig only).
   `ios_cam hash` (every actor, the map time, the random numbers) is
@@ -157,7 +180,7 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   - SAVE / LOAD: tap = DOOM's Save Game / Load Game menu; a 0.3 s hold with
     a ring = quick save / quick load. Sliding off cancels; SAVE wins a tie.
   - MENU: tap = game menu; hold 0.45 s = tray with LOOK, ALWAYS RUN, SENS,
-    GYRO, OPACITY, FPS, CAMERA, CHEAT, LEVEL (single player, in a level),
+    GYRO, OPACITY, HUD, FACE, FPS, CAMERA, CHEAT, LEVEL (single player, in a level),
     NOCLIP (the cheat on), GAMES (more than one game), keyboard (the
     console), and the build stamp under it.
   - LOOK: the drag's look speed, shown on it ("LOOK 1x"); a tap steps 0.5,

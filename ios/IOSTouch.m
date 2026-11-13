@@ -220,6 +220,8 @@ enum {
   KIND_GAMES,    // (MENU's tray, more than one game found) "Switch game", when the touch lifts on it
   KIND_CAMERA,   // CAMERA: a tap, a hold, a slide (see IOSTOUCH_SELFIE_HOLD)
   KIND_CAMSWITCH,// (MENU's tray) shows or hides CAMERA, when the touch lifts on it; held IOSTOUCH_MENU_HOLD, CAMERA's options
+  KIND_HUDSTYLE, // (MENU's tray) the next HUD: SPLIT, STRIP, CLASSIC, NONE, when the touch lifts on it
+  KIND_HUDFACE,  // (MENU's tray) the face in the HUD's pills on or off, when the touch lifts on it
 };
 
 // which modes a button shows in
@@ -248,7 +250,7 @@ typedef struct {
 // the menu. CAMERA in the top row's middle; CHEAT (while cheat mode is on)
 // between it and SAVE. Holding MENU opens a tray just under it: LOOK (the
 // drag's look speed), ALWAYS RUN, tilt aiming's sensitivity and mode (SENS,
-// GYRO), OPACITY, FPS (which shows or hides a frame rate readout by SAVE),
+// GYRO), OPACITY, HUD and FACE (the HUD's look: IOSTOUCH_HUD_*), FPS (which shows or hides a frame rate readout by SAVE),
 // CAMERA (the camera symbol: shows or hides CAMERA; held, its options),
 // CHEAT, LEVEL (single player, in a level), NOCLIP (the cheat on), GAMES
 // (more than one game found) and the keyboard, for the console. RESUME, in
@@ -260,7 +262,8 @@ enum {
   BTN_CAMERA,
   BTN_QUICKSAVE, BTN_QUICKLOAD, BTN_MENU,
   BTN_RESUME,
-  BTN_TRAYLOOK, BTN_TRAYRUN, BTN_TRAYSENS, BTN_TRAYGYRO, BTN_TRAYOPACITY, BTN_TRAYFPS, BTN_TRAYCAM, BTN_TRAYCHEAT,
+  BTN_TRAYLOOK, BTN_TRAYRUN, BTN_TRAYSENS, BTN_TRAYGYRO, BTN_TRAYOPACITY, BTN_TRAYHUD, BTN_TRAYFACE, BTN_TRAYFPS, BTN_TRAYCAM,
+  BTN_TRAYCHEAT,
   BTN_TRAYLEVEL, BTN_TRAYNOCLIP, BTN_TRAYGAMES, BTN_TRAYKEYS, // MENU's tray (left to right), hidden unless it is open (LEVEL, NOCLIP and GAMES only when they apply)
   BTN_COUNT
 };
@@ -283,6 +286,8 @@ static IOSTouchButton _aButtons[] = {
   [BTN_TRAYSENS]  = { "SENS",        KIND_GYROSENS, 0,                      20.0, 0, SHOW_ALL },
   [BTN_TRAYGYRO]  = { "GYRO",        KIND_GYRO,     0,                      20.0, 0, SHOW_ALL },
   [BTN_TRAYOPACITY] = { "OPACITY",   KIND_OPACITY,  0,                      20.0, 0, SHOW_ALL },
+  [BTN_TRAYHUD]   = { "HUD",         KIND_HUDSTYLE, 0,                      20.0, 0, SHOW_ALL },
+  [BTN_TRAYFACE]  = { "FACE",        KIND_HUDFACE,  0,                      20.0, 0, SHOW_ALL },
   [BTN_TRAYFPS]   = { "FPS",         KIND_FPS,      0,                      20.0, 0, SHOW_ALL },
   [BTN_TRAYCAM]   = { "",            KIND_CAMSWITCH, 0,                     20.0, 0, SHOW_ALL },
   [BTN_TRAYCHEAT] = { "CHEAT",       KIND_CHEATSWITCH, 0,                   20.0, 0, SHOW_ALL },
@@ -571,6 +576,49 @@ static int IOSTouch_BoxIsClear(double cx, double cy, double hw, double hh, const
 // keeps to the HUD frame's edges)
 static IOSTouchRect _rMessages;
 
+// ---------------------------------------------------------------- the HUD
+// MENU's tray's HUD (IOSTOUCH_HUD_*; SPLIT unless changed) and FACE (on),
+// kept in the app's settings (IOSTouch_LoadHudPrefs / IOSTouch_SaveHudPrefs:
+// the view's NSUserDefaults, the rig's file). The game draws it
+// (IOSGame.cpp, the Doom status bar's ZScript) where IOSTouch_GetHudLayout
+// says. The pills' sizes are the approved mockups' (2000 x 921 pixels of a
+// 956 x 440 point screen, 2.092 pixels a point), scaled with the screen's
+// height (one size for every phone and iPad: 0.8 to 1.25 of it): 64 px
+// high, 34 px above the bottom where there's a home indicator, 2.4 pt in
+// from the HUD frame's sides. In SPLIT, FIRE (and its arc with it) sits
+// IOSTOUCH_PILL_CLEAR above them; in CLASSIC, above DOOM's status bar.
+#define IOSTOUCH_PILL_H 30.6
+#define IOSTOUCH_PILL_REF_H 440.0
+#define IOSTOUCH_PILL_BOTTOM 16.3
+#define IOSTOUCH_PILL_BOTTOM_BARE 8.0 // (no home indicator)
+#define IOSTOUCH_PILL_EDGE 2.4
+#define IOSTOUCH_PILL_EDGE_MIN 10.0
+#define IOSTOUCH_PILL_CLEAR 14.0
+#define IOSTOUCH_BAR_CLEAR 10.0
+static int _iHudStyle = IOSTOUCH_HUD_SPLIT, _bHudFace = 1, _bHudPrefsLoaded = 0;
+static void IOSTouch_LoadHudPrefs(void); // (the view's, the rig's)
+static void IOSTouch_SaveHudPrefs(void);
+static void IOSTouch_HudPrefs(void)
+{
+  if (_bHudPrefsLoaded) return;
+  _bHudPrefsLoaded = 1;
+  IOSTouch_LoadHudPrefs();
+  if (_iHudStyle < 0 || _iHudStyle >= IOSTOUCH_HUD_COUNT) _iHudStyle = IOSTOUCH_HUD_SPLIT;
+  _bHudFace = _bHudFace != 0;
+}
+
+// Where the pills go on a W x H point screen with these safe-area insets
+// (points): their top and bottom, and the outer edges of SPLIT's two
+static void IOSTouch_PillGeometry(double W, double H, double inLeft, double inTop, double inRight, double inBottom,
+                                  double *pfTop, double *pfBottom, double *pfLeft, double *pfRight);
+
+// The pills as the last layout placed them (points), and the screen's size
+static double _fPillTop = 0.0, _fPillBottom = 0.0, _fPillLeft = 0.0, _fPillRight = 0.0, _fStripHalf = 0.0;
+static double _fPillW = 0.0, _fPillScreenH = 0.0;
+// What the buttons were laid out for (IOSTouch_LayoutKey: the HUD, and in
+// CLASSIC where its status bar's top was): laid out again when it changes
+static int _iLaidOutKey = -1;
+
 // The weapon wheel (points): round the middle of the safe area, 4 pt down,
 // as big as fits with room for a slice to pop out (as Jedi Knight's)
 static double _fWheelCX = 0.0, _fWheelCY = 0.0, _fWheelR0 = 0.0, _fWheelR1 = 0.0;
@@ -596,15 +644,25 @@ static void IOSTouch_WheelGeometry(double W, double H, double inLeft, double inT
 static int _bTrayLevelPlaced = 0; // (the iShown it was placed with)
 static void IOSTouch_PlaceTray(int iShown)
 {
+  // (IOSTOUCH_TRAY_STEP apart; closer, to 44 pt, where the row wouldn't fit
+  // the screen: a small phone with everything shown)
+  int ctShown = 0;
+  for (int i = BTN_TRAYFIRST; i <= BTN_TRAYLAST; i++) {
+    if (!((i == BTN_TRAYLEVEL && !(iShown & IOSTOUCH_TRAY_LEVEL)) || (i == BTN_TRAYNOCLIP && !(iShown & IOSTOUCH_TRAY_NOCLIP)) ||
+          (i == BTN_TRAYGAMES && !(iShown & IOSTOUCH_TRAY_GAMES)))) ctShown++;
+  }
+  double step = IOSTOUCH_TRAY_STEP;
+  if (ctShown > 1 && _fTrayKeysX - (ctShown - 1) * step - 26 < _fTrayLeft)
+    step = fmax(44.0, (_fTrayKeysX - 26 - _fTrayLeft) / (ctShown - 1));
   int ctLeft = 0;
   for (int i = BTN_TRAYLAST; i >= BTN_TRAYFIRST; i--) {
     if ((i == BTN_TRAYLEVEL && !(iShown & IOSTOUCH_TRAY_LEVEL)) || (i == BTN_TRAYNOCLIP && !(iShown & IOSTOUCH_TRAY_NOCLIP)) ||
         (i == BTN_TRAYGAMES && !(iShown & IOSTOUCH_TRAY_GAMES))) {
-      _aButtons[i].x = _fTrayKeysX - (ctLeft + 1) * IOSTOUCH_TRAY_STEP;
+      _aButtons[i].x = _fTrayKeysX - (ctLeft + 1) * step;
       _aButtons[i].y = _fTrayY;
       continue;
     }
-    _aButtons[i].x = _fTrayKeysX - ctLeft * IOSTOUCH_TRAY_STEP;
+    _aButtons[i].x = _fTrayKeysX - ctLeft * step;
     _aButtons[i].y = _fTrayY;
     ctLeft++;
   }
@@ -615,12 +673,36 @@ static void IOSTouch_PlaceTray(int iShown)
   _rTrayBack.x1 = _fTrayKeysX + 26;
   _rTrayBack.y1 = _fTrayY + 26;
   _rTrayKeysBack = _rTrayBack;
-  _rTrayKeysBack.x0 = _fTrayKeysX - IOSTOUCH_TRAY_STEP - 26;
+  _rTrayKeysBack.x0 = _fTrayKeysX - step - 26;
 }
 
 // The screen's usable edges (points), as the last layout had them: the run
 // marker keeps inside them
 static double _fSafeLeft = 8.0, _fSafeTop = 8.0, _fSafeRight = 8.0;
+
+static IOSTouchHud _hud; // (the latest HUD state: below)
+
+static void IOSTouch_PillGeometry(double W, double H, double inLeft, double inTop, double inRight, double inBottom,
+                                  double *pfTop, double *pfBottom, double *pfLeft, double *pfRight)
+{
+  double fl, ft, fr, fb;
+  IOSTouch_HudFrameInsets(inLeft, inTop, inRight, inBottom, &fl, &ft, &fr, &fb);
+  const double k = fmin(fmax(H / IOSTOUCH_PILL_REF_H, 0.8), 1.25);
+  *pfBottom = H - (inBottom > 0.0 ? IOSTOUCH_PILL_BOTTOM : IOSTOUCH_PILL_BOTTOM_BARE);
+  *pfTop = *pfBottom - IOSTOUCH_PILL_H * k;
+  *pfLeft = fmax(fl + IOSTOUCH_PILL_EDGE, IOSTOUCH_PILL_EDGE_MIN);
+  *pfRight = W - fmax(fr + IOSTOUCH_PILL_EDGE, IOSTOUCH_PILL_EDGE_MIN);
+}
+
+// What the layout depends on besides the screen: the HUD, and in CLASSIC
+// where its status bar's top is (to a thousandth of the height)
+static int IOSTouch_LayoutKey(void)
+{
+  IOSTouch_HudPrefs();
+  int key = _iHudStyle;
+  if (_iHudStyle == IOSTOUCH_HUD_CLASSIC && _hud.fBarTop > 0.0f && _hud.fBarTop < 1.0f) key += 8 * (int)lroundf(_hud.fBarTop * 1000.0f);
+  return key;
+}
 
 // Places every button on a W x H point screen with these safe-area insets,
 // keeping clear of the HUD's score and high score boxes and unread messages
@@ -639,8 +721,19 @@ static void IOSTouch_LayoutButtons(double W, double H, double inLeft, double inT
 
   // FIRE in the corner, above the home indicator. Without side insets there
   // is no spare edge for the secondary button to sit in beside FIRE, so FIRE sits further in.
+  // With the HUD SPLIT FIRE (and its arc and CROUCH with it) keeps
+  // IOSTOUCH_PILL_CLEAR above the pills; CLASSIC, IOSTOUCH_BAR_CLEAR above
+  // DOOM's status bar (Added: the touch HUD)
+  IOSTouch_HudPrefs();
+  _iLaidOutKey = IOSTouch_LayoutKey();
+  double pillTop, pillBottom, pillLeft, pillRight;
+  IOSTouch_PillGeometry(W, H, inLeft, inTop, inRight, inBottom, &pillTop, &pillBottom, &pillLeft, &pillRight);
+  double floorY = bottom; // (nothing of the cluster lower than this)
+  if (_iHudStyle == IOSTOUCH_HUD_SPLIT) floorY = fmin(floorY, pillTop - IOSTOUCH_PILL_CLEAR);
+  else if (_iHudStyle == IOSTOUCH_HUD_CLASSIC && _hud.fBarTop > 0.3f && _hud.fBarTop < 1.0f)
+    floorY = fmin(floorY, _hud.fBarTop * H - IOSTOUCH_BAR_CLEAR);
   const double FR = _aButtons[BTN_FIRE].radius;
-  const double fireX = right - (inRight < 20.0 ? 100 : 76), fireY = bottom - 58;
+  const double fireX = right - (inRight < 20.0 ? 100 : 76), fireY = fmin(bottom - 58, floorY - FR);
   _aButtons[BTN_FIRE].x = fireX;
   _aButtons[BTN_FIRE].y = fireY;
 
@@ -687,7 +780,7 @@ static void IOSTouch_LayoutButtons(double W, double H, double inLeft, double inT
           const int deg = (i <= 75) ? 10 + i : 85 - i; // 10 up to 85 degrees, then 9 down to -20
           const double rad = deg * M_PI / 180.0;
           const double px = fireX + (D + extra) * cos(rad), py = fireY - (D + extra) * sin(rad);
-          if (px + AR > W - 4 || py - AR < top + 60 || py + AR > bottom) continue;     // on screen, below the top row
+          if (px + AR > W - 4 || py - AR < top + 60 || py + AR > floorY) continue;     // on screen, below the top row
           if (hypot(px - j->x, py - j->y) < AR + j->radius + jumpGap) continue;          // clear of JUMP
           if (bCutout && IOSTouch_DistToSegment(px, py, cutX, H * 0.5 - cutHalf, cutX, H * 0.5 + cutHalf) < AR + cutR + 2)
             continue;                                                                     // clear of the cutout
@@ -704,6 +797,25 @@ static void IOSTouch_LayoutButtons(double W, double H, double inLeft, double inT
   _fSafeLeft = left;
   _fSafeTop = top;
   _fSafeRight = right;
+
+  // The pills (the game draws them): STRIP's, in the middle, keeps 6 pt
+  // clear of any button of the cluster that reaches down beside it
+  {
+    _fPillTop = pillTop;
+    _fPillBottom = pillBottom;
+    _fPillLeft = pillLeft;
+    _fPillRight = pillRight;
+    _fPillW = W;
+    _fPillScreenH = H;
+    double half = fmin(W * 0.5 - pillLeft, pillRight - W * 0.5);
+    const int aCluster[4] = { BTN_FIRE, BTN_USE, BTN_JUMP, BTN_CROUCH };
+    for (int i = 0; i < 4; i++) {
+      const IOSTouchButton *c = &_aButtons[aCluster[i]];
+      if (c->y + c->radius < pillTop - 2.0) continue;
+      half = fmin(half, fabs(c->x - W * 0.5) - c->radius - 6.0);
+    }
+    _fStripHalf = fmax(half, 40.0);
+  }
 
   // Top left: NEXT WPN | PREV WPN | MAP, below the score box
   double topLeftY = top + 26;
@@ -833,6 +945,28 @@ static void IOSTouch_SetHudFrame(double W, double H, double inLeft, double inTop
 void IOSTouch_GetHudFrame(float afFrame[4])
 {
   memcpy(afFrame, _afHudFrame, sizeof(_afHudFrame));
+}
+
+// Where the HUD's pills go (fractions of the screen; until the first layout,
+// as on a phone of the mockups' shape)
+void IOSTouch_GetHudLayout(IOSTouchHudLayout *p)
+{
+  IOSTouch_HudPrefs();
+  p->iStyle = _iHudStyle;
+  p->bFace = _bHudFace;
+  if (_fPillW <= 0.0 || _fPillScreenH <= 0.0) {
+    p->fPillH = (float)(IOSTOUCH_PILL_H / IOSTOUCH_PILL_REF_H);
+    p->fPillBottom = (float)(1.0 - IOSTOUCH_PILL_BOTTOM / IOSTOUCH_PILL_REF_H);
+    p->fLeft = 0.023f;
+    p->fRight = 0.977f;
+    p->fStripHalf = 0.3f;
+    return;
+  }
+  p->fPillH = (float)((_fPillBottom - _fPillTop) / _fPillScreenH);
+  p->fPillBottom = (float)(_fPillBottom / _fPillScreenH);
+  p->fLeft = (float)(_fPillLeft / _fPillW);
+  p->fRight = (float)(_fPillRight / _fPillW);
+  p->fStripHalf = (float)(_fStripHalf / _fPillW);
 }
 
 // ---------------------------------------------------------------- touches
@@ -1298,6 +1432,23 @@ static void IOSTouch_UseTrayButton(int button)
     IOSTouch_LookNextStep(); // (the tray stays)
     return;
   }
+  else if (kind == KIND_HUDSTYLE || kind == KIND_HUDFACE) {
+    // the HUD: at once (the game draws it as it says; the buttons laid out
+    // again for it), kept; the tray stays, for another tap
+    static const char *const astrHud[IOSTOUCH_HUD_COUNT] = {
+      "HUD: split, health left, ammo and keys right", "HUD: strip, all in the middle", "HUD: classic status bar", "HUD: none" };
+    IOSTouch_HudPrefs();
+    if (kind == KIND_HUDSTYLE) {
+      _iHudStyle = (_iHudStyle + 1) % IOSTOUCH_HUD_COUNT;
+      IOSTouch_Message(astrHud[_iHudStyle]);
+    }
+    else {
+      _bHudFace = !_bHudFace;
+      IOSTouch_Message(_bHudFace ? "HUD: face on" : "HUD: face off");
+    }
+    IOSTouch_SaveHudPrefs();
+    return;
+  }
   else if (kind == KIND_FPS) {
     IOSTouch_SetShowFps(!_bShowFps);
   }
@@ -1518,6 +1669,31 @@ void IOSTouch_SetCheatIcon(const unsigned char *pubRGBA, int iWidth, int iHeight
   _pubCheatIconGrey = g;
   _iCheatIconW = iWidth;
   _iCheatIconH = iHeight;
+  _bCheatIconNew = 1;
+}
+
+// ...or the round one, DOOM's pentagram wall (on and off made by the game):
+// its red circle is the button's edge, so no ring nor backing is drawn
+static int _bCheatRound = 0;
+void IOSTouch_SetCheatRoundIcons(const unsigned char *pubOn, const unsigned char *pubOff, int iSize)
+{
+  _bCheatIconAsked = 1;
+  if (!pubOn || !pubOff || iSize <= 0 || iSize > IOSTOUCH_CHEAT_ICON_MAX) return;
+  const size_t n = (size_t)iSize * iSize * 4;
+  unsigned char *c = (unsigned char *)malloc(n), *g = (unsigned char *)malloc(n);
+  if (!c || !g) {
+    free(c);
+    free(g);
+    return;
+  }
+  memcpy(c, pubOn, n);
+  memcpy(g, pubOff, n);
+  free(_pubCheatIcon);
+  free(_pubCheatIconGrey);
+  _pubCheatIcon = c;
+  _pubCheatIconGrey = g;
+  _iCheatIconW = _iCheatIconH = iSize;
+  _bCheatRound = 1;
   _bCheatIconNew = 1;
 }
 
@@ -3419,6 +3595,30 @@ void IOSTouch_TakeGyro(float *pfYaw, float *pfPitch)
 #define IOSTOUCH_OPACITY_DEFAULTS_KEY @"iosTouchOpacity"
 #define IOSTOUCH_OPACITY_W 260.0
 #define IOSTOUCH_OPACITY_H 44.0
+// ...and the HUD (never set: SPLIT, the face on)
+#define IOSTOUCH_HUD_DEFAULTS_KEY @"iosTouchHud"
+#define IOSTOUCH_HUDFACE_DEFAULTS_KEY @"iosTouchHudFace"
+
+static void IOSTouch_LoadHudPrefs(void)
+{
+  NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+  if ([d objectForKey:IOSTOUCH_HUD_DEFAULTS_KEY]) _iHudStyle = (int)[d integerForKey:IOSTOUCH_HUD_DEFAULTS_KEY];
+  if ([d objectForKey:IOSTOUCH_HUDFACE_DEFAULTS_KEY]) _bHudFace = [d boolForKey:IOSTOUCH_HUDFACE_DEFAULTS_KEY] ? 1 : 0;
+}
+
+static void IOSTouch_SaveHudPrefs(void)
+{
+  NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+  [d setInteger:_iHudStyle forKey:IOSTOUCH_HUD_DEFAULTS_KEY];
+  [d setBool:(_bHudFace ? YES : NO) forKey:IOSTOUCH_HUDFACE_DEFAULTS_KEY];
+}
+
+// The CHEAT icon's width wanted, in the screen's pixels
+int IOSTouch_CheatIconPixels(void)
+{
+  const double px = 2.0 * _aButtons[BTN_CHEAT].radius * [UIScreen mainScreen].scale / IOSTOUCH_CHEAT_ICON_FILL;
+  return (int)fmin(px, IOSTOUCH_CHEAT_ICON_MAX);
+}
 
 // The build stamp from the Info.plist keys CI writes (SWBuildNumber, and
 // SWBuildDate as YYYY-MM-DD in UTC): "build 80 · Nov 9"; "build dev"
@@ -3570,6 +3770,7 @@ typedef struct {
   // settings have, the resets already felt (a thump each)
   CAShapeLayer *lookRing;
   float fLookLabel, fLookSaved;
+  int iHudLabels; // (what the tray's HUD and FACE say: style + 8 * face)
   int ctLookResetsFelt;
   // The stick's run marker (Always Run off): its circle, its "^^", its line
   // to the stick's ring; how it's lit (-1: not yet set); its tick; the ticks
@@ -3794,6 +3995,7 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
     for (int i = BTN_TRAYLOOK; i <= BTN_TRAYGAMES; i++) {
       aButtonViews[i].font = IOSTouch_TrayFont(IOSTouch_FontSize("GYRO\nALWAYS", _aButtons[i].radius));
     }
+    aButtonViews[BTN_TRAYHUD].font = IOSTouch_TrayFont(IOSTouch_FontSize("HUD\nCLASSIC", _aButtons[BTN_TRAYHUD].radius));
     // The tray's LOOK: the look speed kept (1x unless changed), its ring
     {
       NSUserDefaults *dLook = [NSUserDefaults standardUserDefaults];
@@ -3803,6 +4005,7 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
       }
       fLookSaved = _fLookScale;
       fLookLabel = -1.0f;
+      iHudLabels = -1;
       lookRing = IOSTouch_MakeHoldRing(_aButtons[BTN_TRAYLOOK].radius);
       [aButtonViews[BTN_TRAYLOOK].layer addSublayer:lookRing];
       ctLookResetsFelt = _ctLookResets;
@@ -4145,6 +4348,14 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
     fLookLabel = _fLookScale;
     aButtonViews[BTN_TRAYLOOK].text = [NSString stringWithFormat:@"LOOK\n%gx", (double)_fLookScale];
   }
+  // the HUD's ("HUD\nSPLIT", "FACE\nON")
+  IOSTouch_HudPrefs();
+  if (iHudLabels != _iHudStyle + 8 * _bHudFace) {
+    static NSString *const astrHud[IOSTOUCH_HUD_COUNT] = { @"HUD\nSPLIT", @"HUD\nSTRIP", @"HUD\nCLASSIC", @"HUD\nNONE" };
+    iHudLabels = _iHudStyle + 8 * _bHudFace;
+    aButtonViews[BTN_TRAYHUD].text = astrHud[_iHudStyle];
+    aButtonViews[BTN_TRAYFACE].text = _bHudFace ? @"FACE\nON" : @"FACE\nOFF";
+  }
   // The tray's buttons placed again as LEVEL comes and goes (the core moved
   // them), with the backing
   if (bTrayLevelShown != _bTrayLevelPlaced) {
@@ -4193,6 +4404,7 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
                     || (i == BTN_TRAYRUN && _hud.bRunOn)
                     || (i == BTN_MAP && _hud.bAutomap)
                     || (i == BTN_TRAYCAM && _bShowCamera)
+                    || (i == BTN_TRAYFACE && _bHudFace)
                     || (i == BTN_TRAYNOCLIP && _hud.bNoclip);
     const int bGold = ((i == BTN_CHEAT || i == BTN_TRAYCHEAT || i == BTN_TRAYLEVEL) && _bCheatOn);
     const int bTray = IOSTouch_IsTrayButton(i); // only there while the tray is open
@@ -4200,9 +4412,15 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
     if (i == BTN_TRAYGYRO && !bGyro) alpha *= 0.45;                                       // no gyro here
     if (i == BTN_TRAYSENS && (!bGyro || _iGyroMode == IOSTOUCH_GYRO_OFF)) alpha *= 0.45; // ...or it's off
     if (i == BTN_CAMERA && IOSCamera_IsBusy()) alpha *= 0.45; // (the camera is busy)
+    if (i == BTN_TRAYFACE && _iHudStyle != IOSTOUCH_HUD_SPLIT && _iHudStyle != IOSTOUCH_HUD_STRIP) alpha *= 0.45; // (no pills)
     if (!bTray) alpha *= _fOpacity; // (OPACITY: the controls; the tray at full)
     l.alpha = alpha;
-    if (bGold) {
+    if (i == BTN_CHEAT && _bCheatRound && cheatImages[0] && cheatImages[1]) {
+      // the round icon is its own edge: no ring, no backing (held: its ring fills)
+      l.layer.borderColor = [UIColor clearColor].CGColor;
+      l.backgroundColor = [UIColor clearColor];
+    }
+    else if (bGold) {
       l.layer.borderColor = IOSTouch_CheatGold(0.95).CGColor;
       if (!bHeld && i == BTN_CHEAT) l.backgroundColor = IOSTouch_CheatGold(0.28);
     }
@@ -4877,6 +5095,19 @@ static void IOSTouch_SetSymbol(UILabel *l, NSString *name, CGFloat size, NSStrin
     cheatImages[0] = _pubCheatIconGrey ? CFBridgingRelease(IOSTouch_MakeIconImage(_pubCheatIconGrey, _iCheatIconW, _iCheatIconH)) : nil;
     cheatImages[1] = _pubCheatIcon ? CFBridgingRelease(IOSTouch_MakeIconImage(_pubCheatIcon, _iCheatIconW, _iCheatIconH)) : nil;
     iCheatLook = -1;
+    if (_bCheatRound) {
+      // the round icon: as wide as the button over IOSTOUCH_CHEAT_ICON_FILL
+      // (its glow reaches past the edge), smoothly scaled
+      const CGFloat r = _aButtons[BTN_CHEAT].radius, half = r / IOSTOUCH_CHEAT_ICON_FILL;
+      [CATransaction begin];
+      [CATransaction setDisableActions:YES];
+      cheatFace.frame = CGRectMake(r - half, r - half, 2 * half, 2 * half);
+      cheatFace.magnificationFilter = kCAFilterLinear;
+      cheatFace.minificationFilter = kCAFilterTrilinear;
+      [CATransaction commit];
+      aButtonViews[BTN_CHEAT].clipsToBounds = NO;
+      aButtonViews[BTN_CHEAT].layer.masksToBounds = NO;
+    }
   }
   const int iLook = _bCheatOn ? 1 : 0;
   if (iLook != iCheatLook) {
@@ -4884,7 +5115,7 @@ static void IOSTouch_SetSymbol(UILabel *l, NSString *name, CGFloat size, NSStrin
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     cheatFace.contents = cheatImages[iLook];
-    cheatFace.opacity = iLook ? 1.0f : 0.75f;
+    cheatFace.opacity = (iLook || _bCheatRound) ? 1.0f : 0.75f; // (the round one's off is greyed and faded already)
     cheatFace.hidden = (cheatImages[iLook] == nil);
     [CATransaction commit];
     aButtonViews[BTN_CHEAT].textColor = cheatImages[iLook] ? [UIColor clearColor] : [UIColor colorWithWhite:1.0 alpha:0.85];
@@ -5162,6 +5393,12 @@ static int IOSTouch_UpdateOverlay(void *pSDLWindow, int iMode, const IOSTouchHud
     // insets, but moves the cutout to the other side: lay out again
     if (IOSTouch_CutoutMayBeRight(_pOverlay) != _iLayoutCutoutRight) {
       [_pOverlay setNeedsLayout];
+    }
+    // ...and as the HUD changes (the tray's HUD; CLASSIC's status bar): at
+    // once (Added: the touch HUD)
+    if (IOSTouch_LayoutKey() != _iLaidOutKey) {
+      [_pOverlay setNeedsLayout];
+      [_pOverlay layoutIfNeeded];
     }
     [_pOverlay tick];
   }

@@ -28,3 +28,16 @@ bool IOSGame_HoldsGame();
 // The status bar: where the HUD's screen edges are, in pixels of the 2D
 // drawer (x0, y0, x1, y1): the screen less its rounded corners and a notch
 void IOSGame_HudFrame(double w, double h, double* pFrame);
+
+// The HUD (MENU's tray's HUD: IOSTouch.h's IOSTOUCH_HUD_*). D_Display: the
+// status bar's state to draw instead of the usual (HUD_Fullscreen for the
+// pills of SPLIT and STRIP, HUD_None for NONE), or -1 (CLASSIC: as usual);
+// whether the view fills the screen (all but CLASSIC: no room kept for the
+// status bar)
+int IOSGame_HudState();
+bool IOSGame_HudFills();
+// The Doom status bar's ZScript (BaseStatusBar.IOSHud, shared_sbar.cpp):
+// 0 the style (IOSTOUCH_HUD_*), 1 the face on, then in the 2D drawer's
+// pixels (w x h): 2 a pill's height, 3 the pills' bottom, 4 and 5 SPLIT's
+// outer edges, 6 STRIP's widest half
+double IOSGame_HudValue(int which, double w, double h);

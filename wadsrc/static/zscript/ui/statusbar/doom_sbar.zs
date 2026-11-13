@@ -50,8 +50,279 @@ class DoomStatusBar : BaseStatusBar
 		}
 		else if (state == HUD_Fullscreen)
 		{
+			// Added (iOS touch): the touch HUD's pills instead (MENU's tray's HUD: SPLIT, STRIP)
+			int iosHud = int(IOSHud(0));
+			if (iosHud == 0 || iosHud == 1)
+			{
+				DrawIOSHud(iosHud == 0, IOSHud(1) != 0);
+				return;
+			}
 			BeginHUD();
 			DrawFullScreenStuff ();
+		}
+	}
+
+	//---------------------------------------------------------------------------
+	//
+	// Added (iOS touch): the touch HUD (ios/IOSTouch.h, IOSTOUCH_HUD_*): dark
+	// translucent rounded pills at the bottom, of DOOM's own graphics. SPLIT:
+	// bottom left [face] | medikit + health | armour + armour; bottom right
+	// the ammo of the weapon in hand | the keys held. STRIP: all in one pill
+	// in the middle. Sizes are the approved mockups' (in their pixels: a pill
+	// 64 high, DOOM's digits twice their size), scaled to the pill's height
+	// the touch controls give (BaseStatusBar.IOSHud); where a graphic is
+	// missing it is left out. Health under 25 pulses brighter red; ammo at a
+	// quarter or less of what can be carried, red.
+	//
+	//---------------------------------------------------------------------------
+
+	enum EIOSPart
+	{
+		IOSP_FACE, IOSP_GAP, IOSP_MEDI, IOSP_HEALTH, IOSP_PCT, IOSP_ARMI, IOSP_ARMN, IOSP_AMMOI, IOSP_AMMON,
+		IOSP_KEY0 = 10 // ... + 5
+	}
+
+	Shape2D mIOSFill, mIOSEdge;
+	double mIOSU;           // screen pixels per mockup pixel
+	int mIOSHealth, mIOSArmor, mIOSAmmo, mIOSArmorCr, mIOSAmmoCr;
+	bool mIOSBlue, mIOSLow;
+	TextureID mIOSAmmoIcon;
+	bool mIOSKeys[6];
+
+	// A graphic's width at height h (mockup pixels): 0 if the game hasn't it
+	double IOSIconW(TextureID tex, double h)
+	{
+		if (!tex.IsValid()) return 0;
+		Vector2 sz = TexMan.GetScaledSize(tex);
+		return sz.Y > 0 ? sz.X * h / sz.Y : 0;
+	}
+
+	TextureID IOSTex(String name)
+	{
+		return TexMan.CheckForTexture(name, TexMan.Type_Any);
+	}
+
+	void IOSDrawIcon(TextureID tex, double x, double ymid, double w, double h)
+	{
+		double u = mIOSU;
+		Screen.DrawTexture(tex, false, x * u, (ymid - h / 2) * u, DTA_DestWidthF, w * u, DTA_DestHeightF, h * u,
+			DTA_LeftOffset, 0, DTA_TopOffset, 0);
+	}
+
+	// A part's width (mockup pixels), and drawn at x (its left) when draw
+	double IOSPart(int part, double x, double ymid, bool draw)
+	{
+		Font fnt = mHUDFont.mFont;
+		double u = mIOSU;
+		if (part == IOSP_GAP)
+		{
+			if (draw) Screen.DrawThickLine((x + 11) * u, (ymid - 14) * u, (x + 11) * u, (ymid + 14) * u, 2 * u, Color(255, 255, 255, 255), 60);
+			return 22;
+		}
+		if (part == IOSP_FACE)
+		{
+			// DOOM's own mugshot (the status bar's: looks toward damage, grins,
+			// ouch, god), placed by its offsets as on the status bar, 50 high
+			TextureID st = IOSTex("STFST01");
+			TextureID face = GetMugShot(5);
+			if (!face.IsValid()) return 0;
+			TextureID ref = st.IsValid() ? st : face;
+			Vector2 rs = TexMan.GetScaledSize(ref), ro = TexMan.GetScaledOffset(ref);
+			if (rs.Y <= 0) return 0;
+			double k = 50 / rs.Y;
+			if (draw)
+			{
+				Vector2 fs = TexMan.GetScaledSize(face), fo = TexMan.GetScaledOffset(face);
+				double fx = x + (ro.X - fo.X) * k, fy = ymid - 25 + (ro.Y - fo.Y) * k;
+				Screen.DrawTexture(face, false, fx * u, fy * u, DTA_DestWidthF, fs.X * k * u, DTA_DestHeightF, fs.Y * k * u,
+					DTA_LeftOffset, 0, DTA_TopOffset, 0);
+			}
+			return rs.X * k;
+		}
+		if (part == IOSP_MEDI || part == IOSP_ARMI || part == IOSP_AMMOI || part >= IOSP_KEY0)
+		{
+			TextureID tex;
+			double h = 30;
+			if (part == IOSP_MEDI) tex = IOSTex("MEDIA0");
+			else if (part == IOSP_ARMI) tex = IOSTex(mIOSBlue ? "ARM2A0" : "ARM1A0");
+			else if (part == IOSP_AMMOI) { tex = mIOSAmmoIcon; h = 24; }
+			else { tex = IOSTex(String.Format("STKEYS%d", part - IOSP_KEY0)); h = 24; }
+			double w = IOSIconW(tex, h);
+			if (part == IOSP_AMMOI && w > 48) { h = h * 48 / w; w = 48; } // (a wide one: the shells)
+			if (draw && w > 0) IOSDrawIcon(tex, x, ymid, w, h);
+			return w;
+		}
+		// DOOM's big status bar digits (and its %), twice their size
+		String str;
+		int cr = Font.CR_UNTRANSLATED;
+		if (part == IOSP_HEALTH) str = String.Format("%d", mIOSHealth);
+		else if (part == IOSP_PCT) str = "%";
+		else if (part == IOSP_ARMN) { str = String.Format("%d", mIOSArmor); cr = mIOSArmorCr; }
+		else { str = String.Format("%d", mIOSAmmo); cr = mIOSAmmoCr; }
+		double w = fnt.StringWidth(str) * 2;
+		if (draw)
+		{
+			double y = (ymid - 16 + 2) * u;
+			Screen.DrawText(fnt, cr, x * u, y, str, DTA_ScaleX, 2 * u, DTA_ScaleY, 2 * u);
+			if ((part == IOSP_HEALTH || part == IOSP_PCT) && mIOSLow)
+			{
+				// low: pulses brighter red (the bright red added over it), twice a second
+				double a = 0.5 + 0.5 * sin(MSTimeF() * 0.72);
+				Screen.DrawText(fnt, Font.CR_RED, x * u, y, str, DTA_ScaleX, 2 * u, DTA_ScaleY, 2 * u, DTA_Alpha, a * 0.9,
+					DTA_LegacyRenderStyle, STYLE_Add);
+			}
+		}
+		return w;
+	}
+
+	double IOSPillWidth(Array<int> parts)
+	{
+		double w = 44;
+		int n = 0;
+		for (int i = 0; i < parts.Size(); i++)
+		{
+			double pw = IOSPart(parts[i], 0, 0, false);
+			if (pw <= 0) continue;
+			w += pw;
+			n++;
+		}
+		return w + 8 * max(n - 1, 0);
+	}
+
+	// A rounded box's outline as points, inset by d (screen pixels)
+	void IOSRoundRect(Array<double> pts, double x0, double y0, double x1, double y1, double r, double d)
+	{
+		pts.Clear();
+		x0 += d; y0 += d; x1 -= d; y1 -= d; r = max(r - d, 0.5);
+		for (int c = 0; c < 4; c++)
+		{
+			double cx = (c == 0 || c == 3) ? x1 - r : x0 + r;
+			double cy = (c < 2) ? y0 + r : y1 - r;
+			for (int k = 0; k <= 8; k++)
+			{
+				double ang = 90.0 * c + 90.0 * k / 8; // (counter-clockwise from the right, up being -y)
+				pts.Push(cx + r * cos(ang));
+				pts.Push(cy - r * sin(ang));
+			}
+		}
+	}
+
+	// One pill: x0 its left, its bottom at y1 (mockup pixels)
+	void IOSPill(Array<int> parts, double x0, double y1)
+	{
+		double u = mIOSU;
+		double w = IOSPillWidth(parts), h = 64;
+		double y0 = y1 - h;
+		if (!mIOSFill) mIOSFill = new("Shape2D");
+		if (!mIOSEdge) mIOSEdge = new("Shape2D");
+		Array<double> outer, inner;
+		IOSRoundRect(outer, x0 * u, y0 * u, (x0 + w) * u, y1 * u, 26 * u, 0);
+		IOSRoundRect(inner, x0 * u, y0 * u, (x0 + w) * u, y1 * u, 26 * u, 2 * u);
+		int n = outer.Size() / 2;
+		// the inside: a fan; the edge: a band between the two outlines
+		mIOSFill.Clear();
+		// (a shape needs a texture coordinate for each point: unused by a fill)
+		mIOSFill.PushVertex(((x0 + w / 2) * u, (y0 + h / 2) * u));
+		mIOSFill.PushCoord((0, 0));
+		for (int i = 0; i < n; i++)
+		{
+			mIOSFill.PushVertex((inner[i * 2], inner[i * 2 + 1]));
+			mIOSFill.PushCoord((0, 0));
+		}
+		for (int i = 0; i < n; i++) mIOSFill.PushTriangle(0, 1 + i, 1 + (i + 1) % n);
+		mIOSEdge.Clear();
+		for (int i = 0; i < n; i++)
+		{
+			mIOSEdge.PushVertex((outer[i * 2], outer[i * 2 + 1]));
+			mIOSEdge.PushVertex((inner[i * 2], inner[i * 2 + 1]));
+			mIOSEdge.PushCoord((0, 0));
+			mIOSEdge.PushCoord((0, 0));
+		}
+		for (int i = 0; i < n; i++)
+		{
+			int a = i * 2, b = ((i + 1) % n) * 2;
+			mIOSEdge.PushTriangle(a, a + 1, b);
+			mIOSEdge.PushTriangle(b, a + 1, b + 1);
+		}
+		Screen.DrawShapeFill(Color(255, 10, 6, 4), 135 / 255., mIOSFill);
+		Screen.DrawShapeFill(Color(255, 255, 255, 255), 55 / 255., mIOSEdge);
+		double x = x0 + 22, ymid = y0 + h / 2;
+		bool first = true;
+		for (int i = 0; i < parts.Size(); i++)
+		{
+			double pw = IOSPart(parts[i], 0, 0, false);
+			if (pw <= 0) continue;
+			IOSPart(parts[i], x, ymid, true);
+			x += pw + 8;
+		}
+	}
+
+	protected void DrawIOSHud(bool split, bool face)
+	{
+		if (CPlayer == null || CPlayer.mo == null) return;
+		double pillH = IOSHud(2), bottom = IOSHud(3), left = IOSHud(4), right = IOSHud(5), half = IOSHud(6);
+		if (pillH <= 0) return;
+
+		// what to show
+		mIOSHealth = CPlayer.health;
+		mIOSLow = mIOSHealth < 25;
+		let armor = BasicArmor(CPlayer.mo.FindInventory("BasicArmor", true));
+		mIOSArmor = (armor != null) ? armor.Amount : 0;
+		mIOSBlue = armor != null && (armor.ArmorType == 'BlueArmor' || armor.SavePercent >= 0.5);
+		mIOSArmorCr = mIOSBlue ? Font.CR_LIGHTBLUE : Font.CR_GREEN;
+		Inventory ammo1, ammo2;
+		[ammo1, ammo2] = GetCurrentAmmo();
+		mIOSAmmo = ammo1 != null ? ammo1.Amount : -1;
+		mIOSAmmoCr = (ammo1 != null && (ammo1.Amount <= 0 || ammo1.Amount < ammo1.MaxAmount * 0.25)) ? Font.CR_RED : Font.CR_GOLD;
+		mIOSAmmoIcon.SetInvalid();
+		if (ammo1 != null)
+		{
+			TextureID ic;
+			bool applyScale;
+			[ic, applyScale] = GetInventoryIcon(ammo1, 0);
+			mIOSAmmoIcon = ic;
+		}
+		// the keys held, as the status bar's (STKEYS0..5: blue, yellow, red cards, then skulls)
+		static const int lockOf[] = { 2, 3, 1, 5, 6, 4 };
+		for (int i = 0; i < 6; i++) mIOSKeys[i] = CPlayer.mo.CheckKeys(lockOf[i], false, true);
+
+		Array<int> you, gun;
+		if (face) { you.Push(IOSP_FACE); you.Push(IOSP_GAP); }
+		you.Push(IOSP_MEDI); you.Push(IOSP_HEALTH); you.Push(IOSP_PCT);
+		you.Push(IOSP_GAP); you.Push(IOSP_ARMI); you.Push(IOSP_ARMN);
+		if (mIOSAmmo >= 0) { gun.Push(IOSP_AMMOI); gun.Push(IOSP_AMMON); }
+		bool anyKey = false;
+		for (int i = 0; i < 6; i++) if (mIOSKeys[i]) anyKey = true;
+		if (anyKey)
+		{
+			if (gun.Size() > 0) gun.Push(IOSP_GAP);
+			for (int i = 0; i < 6; i++) if (mIOSKeys[i]) gun.Push(IOSP_KEY0 + i);
+		}
+
+		// sizes: the pill's height the touch controls give; smaller where a
+		// pill wouldn't fit its room (STRIP: between the buttons; SPLIT: half
+		// the width each)
+		double u = pillH / 64;
+		if (split)
+		{
+			mIOSU = u;
+			double room = ((right - left) / 2 - 12 * u) / u;
+			double need = max(IOSPillWidth(you), gun.Size() > 0 ? IOSPillWidth(gun) : 0);
+			if (need > room) u *= room / need;
+			mIOSU = u;
+			IOSPill(you, left / u, bottom / u);
+			if (gun.Size() > 0) IOSPill(gun, right / u - IOSPillWidth(gun), bottom / u);
+		}
+		else
+		{
+			Array<int> all;
+			all.Copy(you);
+			if (gun.Size() > 0) { all.Push(IOSP_GAP); all.Append(gun); }
+			mIOSU = u;
+			double need = IOSPillWidth(all), room = 2 * half / u;
+			if (need > room) u *= room / need;
+			mIOSU = u;
+			IOSPill(all, (Screen.GetWidth() / 2) / u - IOSPillWidth(all) / 2, bottom / u);
 		}
 	}
 

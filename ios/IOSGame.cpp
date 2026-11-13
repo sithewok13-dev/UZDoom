@@ -15,6 +15,10 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <math.h>
+#include <dirent.h>
+#include <strings.h>
+#include <algorithm>
+#include <vector>
 
 #include "IOSGame.h"
 #include "IOSCamera.h"
@@ -52,6 +56,8 @@ SDL_Window* IOS_GetGameWindow(); // sdlglvideo.cpp: the game's window (OpenGL ES
 #include "am_map.h"
 #include "m_misc.h"
 #include "v_video.h"
+#include "sbar.h"
+#include "i_time.h"
 
 EXTERN_CVAR(Float, m_sensitivity_x)
 EXTERN_CVAR(Float, m_sensitivity_y)
@@ -60,6 +66,7 @@ EXTERN_CVAR(Bool, invertmousex)
 EXTERN_CVAR(Int, quicksaverotationcount)
 EXTERN_CVAR(Int, quicksavenum)
 EXTERN_CVAR(Bool, cl_run)
+EXTERN_CVAR(Int, screenblocks)
 
 extern const AActor* SendItemUse; // g_game.cpp: the item to use in the next ticcmd ("use <class>")
 extern int chatmodeon;
@@ -496,12 +503,386 @@ static void FeedIcons()
 	}
 }
 
-// CHEAT's picture: the doomguy's grinning god-mode face from the status bar
-// of the player's own data (STFGOD0; else his plain face, STFST01), made
-// as the wheel's icons are; asked once
+//---------------------------------------------------------------------------
+//
+// CHEAT's round icon, made at run time from the player's own DOOM data: the
+// wall MWALL4_1 (the demon's face in a pentagram: DOOM, DOOM II, TNT and
+// Plutonia have it alike), its eyes lit, the wall's own star painted out
+// and DOOM's star and circle drawn again over it evenly, cut round to the
+// circle, which is the button's edge. The recipe is the owner's approved
+// mockup's (Python, Pillow), step for step: the eyes' outline was traced
+// by the owner; Pillow's blurs, resizing and compositing are followed
+// closely so the picture matches it. Off: grey, at 60%.
+//
+//---------------------------------------------------------------------------
+
+namespace {
+struct CheatPic
+{
+	int w = 0, h = 0, c = 0;
+	std::vector<uint8_t> p;
+	CheatPic() = default;
+	CheatPic(int w_, int h_, int c_, uint8_t v = 0) : w(w_), h(h_), c(c_), p(size_t(w_) * h_ * c_, v) {}
+	uint8_t* at(int x, int y) { return &p[(size_t(y) * w + x) * c]; }
+	const uint8_t* at(int x, int y) const { return &p[(size_t(y) * w + x) * c]; }
+};
+
+inline uint8_t Clip8(double v) { return (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : int(v + 0.5)); }
+
+// Pillow's GaussianBlur: three box blurs each way, of a fractional radius,
+// edges repeated, rounded to whole values after each
+void CheatBoxLine(const uint8_t* in, uint8_t* out, int n, int stride, double r)
+{
+	const int ri = int(r);
+	const double frac = r - ri, div = r * 2 + 1;
+	std::vector<double> line(n);
+	for (int i = 0; i < n; i++) line[i] = in[size_t(i) * stride];
+	auto get = [&](int i) { return line[i < 0 ? 0 : i >= n ? n - 1 : i]; };
+	double s = 0; // (a running sum of the window)
+	for (int k = -ri; k <= ri; k++) s += get(k);
+	for (int i = 0; i < n; i++)
+	{
+		out[size_t(i) * stride] = Clip8((s + (get(i - ri - 1) + get(i + ri + 1)) * frac) / div);
+		s += get(i + ri + 1) - get(i - ri);
+	}
+}
+
+void CheatGaussian(CheatPic& im, double radius)
+{
+	const int passes = 3;
+	const double sigma2 = radius * radius / passes;
+	const double L = sqrt(12.0 * sigma2 + 1.0);
+	const double l = floor((L - 1.0) / 2.0);
+	double a = (2 * l + 1) * (l * (l + 1) - 3 * sigma2);
+	a /= 6 * (sigma2 - (l + 1) * (l + 1));
+	const double r = l + a;
+	for (int ch = 0; ch < im.c; ch++)
+	{
+		for (int pass = 0; pass < passes; pass++)
+			for (int y = 0; y < im.h; y++) CheatBoxLine(im.at(0, y) + ch, im.at(0, y) + ch, im.w, im.c, r);
+		for (int pass = 0; pass < passes; pass++)
+			for (int x = 0; x < im.w; x++) CheatBoxLine(im.at(x, 0) + ch, im.at(x, 0) + ch, im.h, im.w * im.c, r);
+	}
+}
+
+// Pillow's LANCZOS resize (alpha premultiplied for RGBA, as Pillow does):
+// across, then down, whole values in between
+double CheatLanczos(double x)
+{
+	auto sinc = [](double v) { return v == 0.0 ? 1.0 : sin(M_PI * v) / (M_PI * v); };
+	return (x >= -3.0 && x < 3.0) ? sinc(x) * sinc(x / 3.0) : 0.0;
+}
+
+void CheatResamplePass(const CheatPic& in, CheatPic& out, bool across)
+{
+	const int inSize = across ? in.w : in.h, outSize = across ? out.w : out.h;
+	const double scale = double(inSize) / outSize, fs = std::max(scale, 1.0), support = 3.0 * fs;
+	const int other = across ? in.h : in.w;
+	for (int o = 0; o < outSize; o++)
+	{
+		const double centre = (o + 0.5) * scale;
+		int x0 = int(centre - support + 0.5), x1 = int(centre + support + 0.5);
+		x0 = std::max(x0, 0);
+		x1 = std::min(x1, inSize);
+		std::vector<double> k(x1 - x0);
+		double ww = 0;
+		for (int x = x0; x < x1; x++) ww += (k[x - x0] = CheatLanczos((x - centre + 0.5) / fs));
+		for (auto& v : k) v /= ww;
+		for (int j = 0; j < other; j++)
+			for (int ch = 0; ch < in.c; ch++)
+			{
+				double s = 0;
+				for (int x = x0; x < x1; x++) s += k[x - x0] * (across ? in.at(x, j) : in.at(j, x))[ch];
+				(across ? out.at(o, j) : out.at(j, o))[ch] = Clip8(s);
+			}
+	}
+}
+
+CheatPic CheatResize(const CheatPic& src, int ow, int oh)
+{
+	CheatPic in = src;
+	if (in.c == 4)
+		for (size_t i = 0; i < in.p.size(); i += 4)
+			for (int ch = 0; ch < 3; ch++) in.p[i + ch] = uint8_t((in.p[i + ch] * in.p[i + 3] + 127) / 255);
+	CheatPic mid(ow, in.h, in.c), out(ow, oh, in.c);
+	CheatResamplePass(in, mid, true);
+	CheatResamplePass(mid, out, false);
+	if (out.c == 4)
+		for (size_t i = 0; i < out.p.size(); i += 4)
+		{
+			const int al = out.p[i + 3];
+			for (int ch = 0; ch < 3; ch++) out.p[i + ch] = al ? Clip8(out.p[i + ch] * 255.0 / al) : 0;
+		}
+	return out;
+}
+
+// src over dst (RGBA, not premultiplied), as Pillow's alpha_composite
+void CheatOver(uint8_t* dst, const uint8_t* src)
+{
+	const double sa = src[3] / 255.0, da = dst[3] / 255.0, oa = sa + da * (1 - sa);
+	if (oa <= 0) { dst[0] = dst[1] = dst[2] = dst[3] = 0; return; }
+	for (int ch = 0; ch < 3; ch++) dst[ch] = Clip8((src[ch] * sa + dst[ch] * da * (1 - sa)) / oa);
+	dst[3] = Clip8(oa * 255);
+}
+
+bool CheatInPoly(const double (*poly)[2], int n, double x, double y)
+{
+	bool in = false;
+	for (int i = 0, j = n - 1; i < n; j = i++)
+	{
+		if (((poly[i][1] > y) != (poly[j][1] > y)) &&
+			x < (poly[j][0] - poly[i][0]) * (y - poly[i][1]) / (poly[j][1] - poly[i][1]) + poly[i][0]) in = !in;
+	}
+	if (in) return true;
+	// (Pillow's polygon also fills the pixels its outline passes through)
+	for (int i = 0, j = n - 1; i < n; j = i++)
+	{
+		const double vx = poly[i][0] - poly[j][0], vy = poly[i][1] - poly[j][1], l2 = vx * vx + vy * vy;
+		double t = l2 > 0 ? ((x - poly[j][0]) * vx + (y - poly[j][1]) * vy) / l2 : 0;
+		t = t < 0 ? 0 : t > 1 ? 1 : t;
+		if (hypot(x - poly[j][0] - t * vx, y - poly[j][1] - t * vy) <= 0.5) return true;
+	}
+	return false;
+}
+} // namespace
+
+// The circle (DOOM's own, measured from the wall) and the star's points
+static const double CHEAT_CX = 64.54, CHEAT_CY = 63.6, CHEAT_R = 52.1, CHEAT_CW = 4.2;
+
+// The wall made into the icon at 128 x 128 (RGBA): its eyes lit, its star
+// redrawn. False: the wall isn't the one expected.
+static bool CheatWallIcon(FGameTexture* tex, CheatPic& on)
+{
+	if (!tex || !tex->GetTexture()) return false;
+	FBitmap bmp = tex->GetTexture()->GetBgraBitmap(nullptr);
+	if (bmp.GetWidth() != 128 || bmp.GetHeight() != 128 || !bmp.GetPixels()) return false;
+	CheatPic src(128, 128, 4);
+	for (int y = 0; y < 128; y++)
+		for (int x = 0; x < 128; x++)
+		{
+			const uint8_t* q = bmp.GetPixels() + y * bmp.GetPitch() + x * 4;
+			uint8_t* d = src.at(x, y);
+			d[0] = q[2]; d[1] = q[1]; d[2] = q[0]; d[3] = 255;
+		}
+
+	// the eyes: the owner's outline of the left one, and the same mirrored
+	static const double eye[8][2] = { {38,50},{42,51},{45,54},{47,58},{47.5,63.5},{44,61.5},{41,58.5},{38.5,55} };
+	double eye2[8][2];
+	for (int i = 0; i < 8; i++) { eye2[i][0] = 126 - eye[i][0]; eye2[i][1] = eye[i][1]; }
+	CheatPic eyes(128, 128, 1);
+	for (int y = 0; y < 128; y++)
+		for (int x = 0; x < 128; x++)
+			if (CheatInPoly(eye, 8, x, y) || CheatInPoly(eye2, 8, x, y)) *eyes.at(x, y) = 255;
+
+	// lit: each eye pixel's brightness through a fire ramp, a red glow round them
+	static const struct { double v; int c[3]; } ramp[] = {
+		{0,{90,0,0}}, {40,{190,15,5}}, {80,{255,60,10}}, {120,{255,150,40}}, {170,{255,230,140}} };
+	CheatPic lit = src, glow(128, 128, 1);
+	for (int y = 0; y < 128; y++)
+		for (int x = 0; x < 128; x++)
+		{
+			if (!*eyes.at(x, y)) continue;
+			uint8_t* d = lit.at(x, y);
+			const double v = std::min(255.0, (d[0] + d[1] + d[2]) / 3.0 * 1.25);
+			int k = 0;
+			while (k < 3 && v > ramp[k + 1].v) k++;
+			if (v > ramp[4].v) { for (int ch = 0; ch < 3; ch++) d[ch] = ramp[4].c[ch]; }
+			else
+			{
+				const double t = (v - ramp[k].v) / (ramp[k + 1].v - ramp[k].v);
+				for (int ch = 0; ch < 3; ch++) d[ch] = uint8_t(int(ramp[k].c[ch] + (ramp[k + 1].c[ch] - ramp[k].c[ch]) * t));
+			}
+			*glow.at(x, y) = 255;
+		}
+	CheatGaussian(glow, 2.0);
+	for (int y = 0; y < 128; y++)
+		for (int x = 0; x < 128; x++)
+		{
+			if (*eyes.at(x, y)) continue;
+			const uint8_t g[4] = { 255, 40, 10, uint8_t(std::min(140, *glow.at(x, y) * 2)) };
+			CheatOver(lit.at(x, y), g);
+		}
+
+	// the wall's own star painted out with the stone round it, a ring at a time
+	std::vector<bool> star(128 * 128, false), known(128 * 128);
+	for (int y = 0; y < 128; y++)
+		for (int x = 0; x < 128; x++)
+		{
+			const uint8_t* s = src.at(x, y);
+			if (!(s[0] > 1.45 * s[1] && s[0] > 1.45 * s[2] && s[0] > 30)) continue;
+			for (int dy = -1; dy <= 1; dy++)
+				for (int dx = -1; dx <= 1; dx++)
+					if (x + dx >= 0 && x + dx < 128 && y + dy >= 0 && y + dy < 128) star[(y + dy) * 128 + x + dx] = true;
+		}
+	std::vector<double> fill(128 * 128 * 3);
+	for (int i = 0; i < 128 * 128; i++)
+	{
+		known[i] = !star[i];
+		for (int ch = 0; ch < 3; ch++) fill[i * 3 + ch] = lit.p[i * 4 + ch];
+	}
+	for (int it = 0; it < 12; it++)
+	{
+		std::vector<bool> nk = known;
+		bool any = false;
+		for (int y = 0; y < 128; y++)
+			for (int x = 0; x < 128; x++)
+			{
+				if (known[y * 128 + x]) continue;
+				any = true;
+				double s[3] = { 0, 0, 0 };
+				int n = 0;
+				for (int yy = std::max(0, y - 1); yy < std::min(128, y + 2); yy++)
+					for (int xx = std::max(0, x - 1); xx < std::min(128, x + 2); xx++)
+						if (known[yy * 128 + xx])
+						{
+							for (int ch = 0; ch < 3; ch++) s[ch] += fill[(yy * 128 + xx) * 3 + ch];
+							n++;
+						}
+				if (!n) continue;
+				for (int ch = 0; ch < 3; ch++) fill[(y * 128 + x) * 3 + ch] = s[ch] / n;
+				nk[y * 128 + x] = true;
+			}
+		if (!any) break;
+		known = nk;
+	}
+	CheatPic clean = lit;
+	for (int i = 0; i < 128 * 128; i++)
+		for (int ch = 0; ch < 3; ch++) clean.p[i * 4 + ch] = uint8_t(std::min(255.0, std::max(0.0, fill[i * 3 + ch])));
+
+	// DOOM's star (its five lines, as on the wall) and circle drawn again, 8
+	// times larger and brought down: thin (1.1) inside the circle, bold
+	// (2.0) outside, easing over 5 pixels; the circle 4.2 wide, inwards
+	const int S = 8, N = 128 * S;
+	CheatPic lines(N, N, 1);
+	static const double TL[2] = {1,2}, TR[2] = {126,2}, LL[2] = {-2,82}, RR[2] = {129,82}, BB[2] = {64,124};
+	const double* seg[5][2] = { {TL, RR}, {TR, LL}, {LL, RR}, {TL, BB}, {TR, BB} };
+	for (auto& sg : seg)
+		for (int i = 0; i <= 600; i++)
+		{
+			const double t = i / 600.0;
+			const double x = sg[0][0] + (sg[1][0] - sg[0][0]) * t, y = sg[0][1] + (sg[1][1] - sg[0][1]) * t;
+			const double inside = CHEAT_R - hypot(x - CHEAT_CX, y - CHEAT_CY);
+			const double k = std::max(0.0, std::min(1.0, (inside + 2.5) / 5.0));
+			const double rr = (2.0 + (1.1 - 2.0) * k) * S / 2;
+			const double cx = x * S, cy = y * S;
+			for (int py = std::max(0, int(floor(cy - rr))); py <= std::min(N - 1, int(ceil(cy + rr))); py++)
+				for (int px = std::max(0, int(floor(cx - rr))); px <= std::min(N - 1, int(ceil(cx + rr))); px++)
+					if ((px - cx) * (px - cx) + (py - cy) * (py - cy) <= rr * rr) *lines.at(px, py) = 255;
+		}
+	{
+		const double x0 = (CHEAT_CX - CHEAT_R) * S, x1 = (CHEAT_CX + CHEAT_R) * S, y0 = (CHEAT_CY - CHEAT_R) * S, y1 = (CHEAT_CY + CHEAT_R) * S;
+		const double cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, R = (x1 - x0) / 2, w = int(CHEAT_CW * S);
+		for (int py = 0; py < N; py++)
+			for (int px = 0; px < N; px++)
+			{
+				const double d = hypot(px - cx, py - cy);
+				if (d <= R && d > R - w) *lines.at(px, py) = 255;
+			}
+	}
+	CheatPic al = CheatResize(lines, 128, 128);
+
+	// in DOOM's red over the stone, never over the lit eyes
+	on = clean;
+	for (int y = 0; y < 128; y++)
+		for (int x = 0; x < 128; x++)
+		{
+			if (*eyes.at(x, y)) continue;
+			const uint8_t c[4] = { 225, 25, 15, *al.at(x, y) };
+			CheatOver(on.at(x, y), c);
+		}
+	return true;
+}
+
+// The button: cut round to the circle (whose outer edge is the button's
+// edge), a faint red glow round it while on; off grey at 60%; size pixels
+// wide (the button's width / IOSTOUCH_CHEAT_ICON_FILL: the glow round it), sharpened
+// a little as the mockup's (Pillow's UnsharpMask 1, 70%, 2)
+static CheatPic CheatButton(const CheatPic& on, int size, bool lit)
+{
+	const int S = 8;
+	const double R = CHEAT_R - 0.15;
+	const int bx0 = int((CHEAT_CX - R) * S), by0 = int((CHEAT_CY - R) * S), bx1 = int((CHEAT_CX + R) * S), by1 = int((CHEAT_CY + R) * S);
+	const int n = bx1 - bx0;
+	(void)by1;
+	const int big = int(n * 1.16), o0 = (big - n) / 2;
+	CheatPic out(big, big, 4);
+	if (lit)
+	{
+		const int rw = std::max(2, int(n * 0.04));
+		CheatPic gl(big, big, 1);
+		const double c = o0 + n / 2.0, Ro = n / 2.0;
+		for (int y = 0; y < big; y++)
+			for (int x = 0; x < big; x++)
+			{
+				const double d = hypot(x - c, y - c);
+				if (d <= Ro && d > Ro - rw * 2) *gl.at(x, y) = 255;
+			}
+		CheatGaussian(gl, n * 0.025);
+		for (size_t i = 0; i < gl.p.size(); i++)
+		{
+			uint8_t* d = &out.p[i * 4];
+			d[0] = 255; d[1] = 40; d[2] = 10; d[3] = uint8_t(gl.p[i] * 2 / 3);
+		}
+	}
+	const double mc = (n - 1) / 2.0;
+	for (int y = 0; y < n; y++)
+		for (int x = 0; x < n; x++)
+		{
+			if ((x - mc) * (x - mc) + (y - mc) * (y - mc) > mc * mc + mc) continue; // (Pillow's ellipse 0..n-1)
+			const uint8_t* s = on.at((x + bx0) / S, (y + by0) / S);
+			uint8_t px[4] = { s[0], s[1], s[2], 255 };
+			if (!lit)
+			{
+				const uint8_t g = uint8_t((s[0] * 19595 + s[1] * 38470 + s[2] * 7471 + 0x8000) >> 16);
+				px[0] = px[1] = px[2] = g;
+				px[3] = 255 * 60 / 100;
+			}
+			CheatOver(out.at(x + o0, y + o0), px);
+		}
+	CheatPic res = CheatResize(out, size, size);
+	// UnsharpMask(radius 1, 70%, threshold 2), every channel
+	CheatPic blur = res;
+	CheatGaussian(blur, 1.0);
+	for (size_t i = 0; i < res.p.size(); i++)
+	{
+		const int diff = int(res.p[i]) - int(blur.p[i]);
+		if (abs(diff) >= 2) res.p[i] = Clip8(res.p[i] + diff * 70 / 100.0);
+	}
+	return res;
+}
+
+// The icons, on and off, size x size (false: no MWALL4_1, or not DOOM's)
+static bool MakeCheatRoundIcons(int size, TArray<uint8_t>& on, TArray<uint8_t>& off, CheatPic* pWall = nullptr)
+{
+	FTextureID id = TexMan.CheckForTexture("MWALL4_1", ETextureType::Wall, FTextureManager::TEXMAN_Overridable | FTextureManager::TEXMAN_TryAny);
+	if (!id.isValid()) return false;
+	CheatPic wall;
+	if (!CheatWallIcon(TexMan.GetGameTexture(id), wall)) return false;
+	if (pWall) *pWall = wall;
+	CheatPic a = CheatButton(wall, size, true), b = CheatButton(wall, size, false);
+	on.Resize(unsigned(a.p.size()));
+	memcpy(on.Data(), a.p.data(), a.p.size());
+	off.Resize(unsigned(b.p.size()));
+	memcpy(off.Data(), b.p.data(), b.p.size());
+	return true;
+}
+
+// CHEAT's picture: the round pentagram icon above, from the player's own
+// data; in a game without that wall, the doomguy's grinning god-mode face
+// from the status bar (STFGOD0; else his plain face, STFST01), made as the
+// wheel's icons are; asked once
 static void FeedCheatIcon()
 {
 	if (!IOSTouch_WantsCheatIcon()) return;
+	{
+		TArray<uint8_t> on, off;
+		const int size = IOSTouch_CheatIconPixels();
+		if (size > 8 && MakeCheatRoundIcons(size, on, off))
+		{
+			IOSTouch_SetCheatRoundIcons(on.Data(), off.Data(), size);
+			return;
+		}
+	}
 	static const char* const names[] = { "STFGOD0", "STFST01", "STFST00" };
 	for (auto name : names)
 	{
@@ -518,11 +899,115 @@ static void FeedCheatIcon()
 	IOSTouch_SetCheatIcon(nullptr, 0, 0); // (CHEAT says CHEAT)
 }
 
-// The cheat coming on: the game's power-up pickup sound (DSGETPOW, from the
-// player's own data); off is silent
+// The cheat coming on: DOOM II's Icon of Sin spitting a cube (DSBOSPIT,
+// "brain/spit"), whole, from the player's own data; in DOOM, which hasn't
+// it, from a doom2.wad beside the game's own IWAD (the app's Documents) if
+// there is one (read from that file, never bundled); else the game's
+// power-up pickup (DSGETPOW). Off is silent.
+static FSoundID cheatSpit = NO_SOUND;      // (the sound made from doom2.wad's lump)
+static TArray<uint8_t> cheatSpitData;     // ...its DMX lump
+static bool cheatSpitLooked = false;
+
+// DSBOSPIT from a doom2.wad in the IWAD's folder (any letter case), read
+// from the WAD's own directory
+static bool ReadSpitFromDoom2(TArray<uint8_t>& data, FString& from)
+{
+	const int iwad = fileSystem.GetIwadNum();
+	const char* full = iwad >= 0 ? fileSystem.GetResourceFileFullName(iwad) : nullptr;
+	if (!full || !*full) return false;
+	FString dir = full;
+	const ptrdiff_t slash = dir.LastIndexOf('/');
+	dir = slash >= 0 ? FString(dir.GetChars(), slash) : FString(".");
+	DIR* d = opendir(dir.GetChars());
+	if (!d) return false;
+	FString path;
+	while (dirent* e = readdir(d))
+		if (!strcasecmp(e->d_name, "doom2.wad")) { path.Format("%s/%s", dir.GetChars(), e->d_name); break; }
+	closedir(d);
+	if (path.IsEmpty()) return false;
+	FILE* f = fopen(path.GetChars(), "rb");
+	if (!f) return false;
+	bool ok = false;
+	uint8_t head[12];
+	if (fread(head, 1, 12, f) == 12 && (!memcmp(head, "IWAD", 4) || !memcmp(head, "PWAD", 4)))
+	{
+		const uint32_t count = head[4] | head[5] << 8 | head[6] << 16 | uint32_t(head[7]) << 24;
+		const uint32_t dirAt = head[8] | head[9] << 8 | head[10] << 16 | uint32_t(head[11]) << 24;
+		if (count < 100000 && fseek(f, dirAt, SEEK_SET) == 0)
+		{
+			TArray<uint8_t> dirData(count * 16, true);
+			if (fread(dirData.Data(), 16, count, f) == count)
+				for (uint32_t i = 0; i < count && !ok; i++)
+				{
+					const uint8_t* en = &dirData[i * 16];
+					if (strncasecmp((const char*)en + 8, "DSBOSPIT", 8)) continue;
+					const uint32_t pos = en[0] | en[1] << 8 | en[2] << 16 | uint32_t(en[3]) << 24;
+					const uint32_t size = en[4] | en[5] << 8 | en[6] << 16 | uint32_t(en[7]) << 24;
+					if (size < 8 || size > (4u << 20) || fseek(f, pos, SEEK_SET) != 0) break;
+					data.Resize(size);
+					ok = fread(data.Data(), 1, size, f) == size;
+				}
+		}
+	}
+	fclose(f);
+	if (ok) from = path;
+	return ok;
+}
+
+// The doom2.wad sound made playable: a sound of its own (its lump number
+// only marks it as one that exists: the data is loaded here, as the sound
+// engine loads a DMX lump; again if the engine let it go)
+static FSoundID SpitFromDoom2()
+{
+	if (!cheatSpitLooked)
+	{
+		cheatSpitLooked = true;
+		FString from;
+		if (ReadSpitFromDoom2(cheatSpitData, from)) Printf(PRINT_NONOTIFY, "iOS: the cheat's sound: DSBOSPIT from %s\n", from.GetChars());
+		else cheatSpitData.Clear();
+	}
+	if (cheatSpitData.Size() < 8 || !soundEngine) return NO_SOUND;
+	if (cheatSpit == NO_SOUND || soundEngine->GetSfx(cheatSpit)->name != FName("ios/cheatspit"))
+	{
+		const int mark = fileSystem.CheckNumForName("PLAYPAL");
+		if (mark < 0) return NO_SOUND;
+		cheatSpit = soundEngine->AddSoundLump("ios/cheatspit", mark, 0);
+	}
+	sfxinfo_t* sfx = soundEngine->GetWritableSfx(cheatSpit);
+	if (!sfx->data.isValid() && GSnd && !GSnd->IsNull())
+	{
+		uint8_t* p = cheatSpitData.Data();
+		const int len = (int)cheatSpitData.Size();
+		const int dmxlen = p[4] | p[5] << 8 | p[6] << 16 | p[7] << 24;
+		if (p[0] == 3 && p[1] == 0 && dmxlen <= len - 8)
+		{
+			int rate = p[2] | p[3] << 8;
+			if (rate == 0) rate = 11025;
+			sfx->data = GSnd->LoadSoundRaw(p + 8, dmxlen, rate, 1, 8, -1);
+		}
+		else sfx->data = GSnd->LoadSound(p, len, -1, -1);
+	}
+	sfx->lumpnum = fileSystem.CheckNumForName("PLAYPAL");
+	return cheatSpit;
+}
+
+// Which: "brain/spit" (the game's own), the doom2.wad one, or the pickup
+static const char* CheatSoundName(FSoundID* pid)
+{
+	FSoundID id = S_FindSound("brain/spit");
+	if (soundEngine && soundEngine->isValidSoundId(id)) { *pid = id; return "brain/spit (DSBOSPIT, the game's own)"; }
+	id = SpitFromDoom2();
+	if (id != NO_SOUND) { *pid = id; return "DSBOSPIT from doom2.wad beside the IWAD"; }
+	*pid = S_FindSound("misc/p_pkup");
+	return "misc/p_pkup (DSGETPOW: no DSBOSPIT)";
+}
+
 static void CheatSound()
 {
-	S_Sound(CHAN_VOICE, CHANF_UI, "misc/p_pkup", 1.f, ATTN_NONE);
+	FSoundID id;
+	const char* which = CheatSoundName(&id);
+	Printf(PRINT_NONOTIFY, "iOS: the cheat's sound: %s\n", which);
+	S_Sound(CHAN_7, CHANF_UI, id, 1.f, ATTN_NONE);
 }
 
 //---------------------------------------------------------------------------
@@ -689,6 +1174,14 @@ void IOSGame_Frame()
 	if (levelPick && cheatLevels.Size() == 0) FindLevels();
 	hud.ctLevels = levelPick ? cheatLevels.Size() : 0;
 	hud.uWorld = levelStarts;
+	// the HUD CLASSIC: where DOOM's status bar starts (FIRE and its arc keep
+	// above it), while it shows (the screen size kept for it)
+	{
+		IOSTouchHudLayout hl;
+		IOSTouch_GetHudLayout(&hl);
+		if (hl.iStyle == IOSTOUCH_HUD_CLASSIC && StatusBar && screen && screenblocks <= 10 && screen->GetHeight() > 0)
+			hud.fBarTop = float(StatusBar->GetTopOfStatusbar()) / screen->GetHeight();
+	}
 	IOSTouch_SetWeapons(&wpn);
 	if (mode != IOSTOUCH_HIDDEN)
 	{
@@ -845,6 +1338,39 @@ extern "C" int IOSGame_LastPictureRect(int r[6])
 	return 1;
 }
 
+// The HUD: SPLIT and STRIP draw their pills as the full-screen HUD (the
+// Doom status bar's ZScript), NONE nothing, CLASSIC as usual
+int IOSGame_HudState()
+{
+	IOSTouchHudLayout hl;
+	IOSTouch_GetHudLayout(&hl);
+	if (hl.iStyle == IOSTOUCH_HUD_SPLIT || hl.iStyle == IOSTOUCH_HUD_STRIP) return HUD_Fullscreen;
+	if (hl.iStyle == IOSTOUCH_HUD_NONE) return HUD_None;
+	return -1;
+}
+
+bool IOSGame_HudFills()
+{
+	return IOSGame_HudState() >= 0;
+}
+
+double IOSGame_HudValue(int which, double w, double h)
+{
+	IOSTouchHudLayout hl;
+	IOSTouch_GetHudLayout(&hl);
+	switch (which)
+	{
+	case 0: return hl.iStyle;
+	case 1: return hl.bFace;
+	case 2: return hl.fPillH * h;
+	case 3: return hl.fPillBottom * h;
+	case 4: return hl.fLeft * w;
+	case 5: return hl.fRight * w;
+	case 6: return hl.fStripHalf * w;
+	}
+	return 0;
+}
+
 void IOSGame_HudFrame(double w, double h, double* pFrame)
 {
 	float f[4];
@@ -963,6 +1489,45 @@ CCMD(ios_riglevels)
 	if (cheatLevels.Size() == 0) FindLevels();
 	for (unsigned i = 0; i < cheatLevels.Size(); i++) Printf("riglevel %u %s | %s\n", i + 1, cheatLevels[i].name.GetChars(), cheatLevels[i].map.GetChars());
 	Printf("riglevels %u, current %d\n", cheatLevels.Size(), IOSGame_CurrentLevel());
+}
+
+// CHEAT's round icon (on, off) at a size (default: the overlay's) as raw
+// files (4-byte width, height, then RGBA) in argv[1], and the 128 x 128
+// picture it is cut from; and which sound coming on plays
+CCMD(ios_rigcheaticon)
+{
+	if (argv.argc() < 2) return;
+	const int size = argv.argc() >= 3 ? atoi(argv[2]) : IOSTouch_CheatIconPixels();
+	TArray<uint8_t> on, off;
+	CheatPic wall;
+	const uint64_t t0 = I_msTime();
+	const bool made = MakeCheatRoundIcons(size, on, off, &wall);
+	Printf("rigcheaticon: made in %d ms\n", int(I_msTime() - t0));
+	if (!made)
+	{
+		Printf("rigcheaticon: no MWALL4_1 (the face's fallback)\n");
+		return;
+	}
+	auto put = [&](const char* name, const uint8_t* px, int w, int h) {
+		FILE* f = fopen(FStringf("%s/%s.rgba", argv[1], name).GetChars(), "wb");
+		if (!f) return;
+		int32_t wh[2] = { w, h };
+		fwrite(wh, 4, 2, f);
+		fwrite(px, 1, size_t(w) * h * 4, f);
+		fclose(f);
+	};
+	put(FStringf("cheat-on-%d", size).GetChars(), on.Data(), size, size);
+	put(FStringf("cheat-off-%d", size).GetChars(), off.Data(), size, size);
+	put("cheat-wall-128", wall.p.data(), 128, 128);
+	Printf("rigcheaticon: %d px written\n", size);
+}
+
+CCMD(ios_rigcheatsound)
+{
+	FSoundID id;
+	Printf("rigcheatsound: %s\n", CheatSoundName(&id));
+	if (soundEngine && id != NO_SOUND)
+		Printf("rigcheatsound: sound %d loaded %d (sound system %s)\n", id.index(), (int)soundEngine->GetSfx(id)->data.isValid(), GSnd && !GSnd->IsNull() ? "on" : "off");
 }
 
 // The wheel's pictures as raw files (4-byte width, height, then RGBA) in argv[1]
