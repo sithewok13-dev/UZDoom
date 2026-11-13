@@ -310,6 +310,7 @@ extern "C" void* IOS_VulkanGetInstanceProcAddr()
 }
 
 extern "C" int IOSTouch_MaxFps(void);
+extern "C" int IOSTouch_LookStats(char* str, int size);
 static uint64_t IOS_Ns()
 {
 	return clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
@@ -334,7 +335,14 @@ extern "C" void IOS_PerfFrame(uint64_t capNs, uint64_t ticsNs, uint64_t inputNs,
 	const int why = iosWaitReasons;
 	iosWaitReasons = 0;
 	if (!inLevel) { tStart = 0; return; }
-	if (tStart == 0) { tStart = now; frames = waits = reasons = 0; sumCap = sumTics = sumInput = sumDraw = sumAcq = sumGpu = worst = 0; IOSPacer_TakeStats(iosPacer); return; }
+	if (tStart == 0)
+	{
+		char unused[512];
+		tStart = now; frames = waits = reasons = 0; sumCap = sumTics = sumInput = sumDraw = sumAcq = sumGpu = worst = 0;
+		IOSPacer_TakeStats(iosPacer);
+		IOSTouch_LookStats(unused, sizeof(unused)); // (the look line starts with the window too)
+		return;
+	}
 	frames++;
 	if (why & 1) waits++;
 	reasons |= why;
@@ -362,6 +370,9 @@ extern "C" void IOS_PerfFrame(uint64_t capNs, uint64_t ticsNs, uint64_t inputNs,
 				st.meanMs, st.minMs, st.maxMs, st.sdMs, st.uneven, st.late, st.shown, iosPacer.refresh * 1e-6, st.errMs);
 		else
 			printf("iOS: shown: no presentation times (no VK_GOOGLE_display_timing)\n");
+		// the look's timing, when there was a drag (IOSTouch.m)
+		char look[512];
+		if (IOSTouch_LookStats(look, sizeof(look))) printf("%s\n", look);
 		fflush(stdout);
 		tStart = now;
 		frames = waits = reasons = 0;

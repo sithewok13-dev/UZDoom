@@ -165,6 +165,7 @@ enum { IOSTOUCH_HUD_SPLIT = 0, IOSTOUCH_HUD_STRIP, IOSTOUCH_HUD_CLASSIC, IOSTOUC
 typedef struct IOSTouchHudLayout {
   int iStyle;          /* IOSTOUCH_HUD_* */
   int bFace;           /* the face in the pills */
+  float fAlpha;        /* how strongly the HUD shows (the tray's HUD held: a slider), 0.2..1 */
   float fPillH;        /* a pill's height (of the screen's height) */
   float fPillBottom;   /* the pills' bottom edge (of the height, from the top) */
   float fLeft, fRight; /* SPLIT's pills' outer edges (of the width) */
@@ -186,6 +187,11 @@ void IOSTouch_ReadMove(float *pfMoveX, float *pfMoveY);
 /* Look movement since the last call, in mouse counts (+x right, +y down),
    at the tray's LOOK speed */
 void IOSTouch_TakeLook(float *pfDX, float *pfDY);
+/* The look's timing since the last call, as a line for the play log (the
+   drag frames, frames with no new touches or no turn, touches per frame,
+   the newest touch's age, the lag, the longest gap between touches); 0 if
+   there was no drag in that time */
+int IOSTouch_LookStats(char *str, int size);
 /* Tilt aiming since the last call, in degrees for the view to turn (+ left)
    and tilt (+ up), straight into the player's view angles */
 void IOSTouch_TakeGyro(float *pfYaw, float *pfPitch);

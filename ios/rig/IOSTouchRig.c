@@ -53,7 +53,7 @@ static void IOSTouch_GyroRunUpdates(int bRun)
 }
 
 // The HUD's settings (the view's NSUserDefaults): a file, $HOME/.iosrig-hud
-// ("<style> <face>"), so a restart keeps them as the phone does
+// ("<style> <face> <strength>"), so a restart keeps them as the phone does
 static void IOSTouchRig_HudPrefsPath(char *path, size_t size)
 {
   const char *home = getenv("HOME");
@@ -67,12 +67,15 @@ static void IOSTouch_LoadHudPrefs(void)
   FILE *f = fopen(path, "r");
   if (!f) return;
   int style = 0, face = 1;
-  if (fscanf(f, "%d %d", &style, &face) == 2) {
+  float k = 1.0f;
+  const int n = fscanf(f, "%d %d %f", &style, &face, &k);
+  if (n >= 2) {
     _iHudStyle = style;
     _bHudFace = face;
   }
+  if (n >= 3) _fHudOpacity = IOSTouch_OpacityStep(k);
   fclose(f);
-  printf("rig: hud prefs loaded: style %d face %d\n", _iHudStyle, _bHudFace);
+  printf("rig: hud prefs loaded: style %d face %d strength %.2f\n", _iHudStyle, _bHudFace, (double)_fHudOpacity);
 }
 
 static void IOSTouch_SaveHudPrefs(void)
@@ -81,7 +84,7 @@ static void IOSTouch_SaveHudPrefs(void)
   IOSTouchRig_HudPrefsPath(path, sizeof(path));
   FILE *f = fopen(path, "w");
   if (!f) return;
-  fprintf(f, "%d %d\n", _iHudStyle, _bHudFace);
+  fprintf(f, "%d %d %.2f\n", _iHudStyle, _bHudFace, (double)_fHudOpacity);
   fclose(f);
 }
 
@@ -232,6 +235,7 @@ static void IOSTouchRig_State(void)
   {
     IOSTouchHudLayout hl;
     IOSTouch_GetHudLayout(&hl);
+    printf("rig: hud strength %.2f slider %d ring %.2f\n", (double)hl.fAlpha, _bHudOpacityOpen, (double)_fHudRing);
     printf("rig: hud style %d face %d barTop %.3f pills top %.1f bottom %.1f left %.1f right %.1f striphalf %.1f (frac h %.4f bottom %.4f l %.4f r %.4f half %.4f)\n",
            hl.iStyle, hl.bFace, (double)_hud.fBarTop, _fPillTop, _fPillBottom, _fPillLeft, _fPillRight, _fStripHalf, (double)hl.fPillH,
            (double)hl.fPillBottom, (double)hl.fLeft, (double)hl.fRight, (double)hl.fStripHalf);
@@ -325,6 +329,16 @@ void IOSTouchRig_Command(const char *cmd)
     }
     os_unfair_lock_unlock(&_lock);
     printf("rig: gyro %s %s (reading %d)\n", argv[1], argv[2], _bReading);
+  }
+  else if (!strcmp(op, "hudslide") && argc >= 2) {
+    // the HUD's slider moved to a value and lifted (as the view's: only while it is open)
+    if (_bHudOpacityOpen && _bTrayOpen) IOSTouch_SetHudOpacity((float)atof(argv[1]), 1);
+    printf("rig: hudslide %s (slider %d) -> %.2f\n", argv[1], _bHudOpacityOpen && _bTrayOpen, (double)_fHudOpacity);
+  }
+  else if (!strcmp(op, "lookstats")) {
+    char line[512];
+    if (IOSTouch_LookStats(line, sizeof(line))) printf("rig: %s\n", line);
+    else printf("rig: look: no drag\n");
   }
   else if (!strcmp(op, "state")) {
     IOSTouchRig_State();

@@ -31,6 +31,12 @@ struct IOSPacer
 	uint32_t id = 0;          // the last present's id
 	uint64_t starts[HISTORY] = {}; // each present's planned start, by id (0: none asked)
 	double steer = 0;         // ns the next starts still move by
+	// Shown a whole refresh (or more) after the plan, frame after frame: the
+	// plan sits on the wrong refresh (see IOSPacer_Shown): the late ones in a
+	// row, frames to let a correction take effect, and what was corrected
+	// since the pace last started over (at most a frame period)
+	int lateRun = 0, foldHold = 0;
+	double folded = 0;
 	// for the log
 	uint64_t lastActual = 0;
 	uint32_t lastActualId = 0;
@@ -47,7 +53,7 @@ static inline uint64_t IOSPacer_Wake(IOSPacer& p, uint64_t now, uint64_t periodN
 	p.fresh = 1;
 	if (periodNs == 0) { p.start = now; return 0; }
 	// (far behind, after a pause or a load: from now on)
-	if (p.next == 0 || now > p.next + periodNs) p.next = now;
+	if (p.next == 0 || now > p.next + periodNs) { p.next = now; p.folded = 0; p.lateRun = 0; }
 	p.start = p.next;
 	// steered at most a sixteenth of a refresh a frame, so the pace never jumps
 	double s = p.steer;
@@ -109,6 +115,27 @@ static inline void IOSPacer_Shown(IOSPacer& p, uint32_t id, uint64_t actual)
 	p.sumErr += fabs(e);
 	p.errs++;
 	p.steer += e * 0.1;
+	// Every frame a whole refresh late: the plan is on the wrong refresh, and
+	// steering by what is left over within one refresh can't move it. Seen
+	// on the phone after the app came back: the pace starts over from "now",
+	// the screen reports its fastest refresh (MoltenVK: 120 Hz, 8.33 ms) while
+	// at FPS 60 it shows frames only every other one (16.67 ms), so the plan
+	// lands on the right refresh or on the one between, at random; on the
+	// one between every frame was "late" (shown 8.33 ms after its plan, the
+	// pace still even) for the rest of the run. After 8 such frames in a row
+	// the starts move that whole refresh later (spread over 16 frames, as all
+	// steering is), then wait to see it work; never more than a frame period
+	// in all until the pace starts over, so frames that are simply slow can't
+	// push the pace on and on.
+	if (p.foldHold > 0) { p.foldHold--; return; }
+	p.lateRun = (k >= 1.0) ? p.lateRun + 1 : 0;
+	if (p.lateRun >= 8 && p.folded + k * V <= (double)p.period + 1.0)
+	{
+		p.steer += k * V;
+		p.folded += k * V;
+		p.lateRun = 0;
+		p.foldHold = 48;
+	}
 }
 
 // The log's figures, from the last call on

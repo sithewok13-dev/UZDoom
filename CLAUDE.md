@@ -68,7 +68,11 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   armour, bottom right ammo | keys, FIRE and its arc lifted 14 pt above
   them; STRIP one pill in the middle (shrunk to stay clear of the
   buttons); CLASSIC the status bar, FIRE and its arc above it (its top
-  from the game, `fBarTop`). The face is the status bar's mugshot.
+  from the game, `fBarTop`). The face is the status bar's mugshot. HUD
+  held 0.45 s (ring): a slider under the tray, as OPACITY's (live, kept on
+  lift; `iosTouchHudOpacity`, 20%-100% in 5% steps, default 100%) fading
+  the pills and their contents, and CLASSIC's status bar (`Alpha`; it dims
+  over the view's border, the view doesn't reach under it).
 - **LEVEL** (tray, any single-player level, cheat or not; gold while the
   cheat is on): the game's maps in MAPINFO's order (add-ons' too), the game
   held still while open; a tap is `map <lump>`: a new game at that map
@@ -115,6 +119,14 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   "shown every ... ms (min, max, spread): n uneven, n late", the screen's
   real present times. `ios/rig/IOSPacerSim.cpp` runs the pacer against a
   pretend 120/60 Hz screen (build 14's way: a third of frames uneven).
+  MoltenVK reports the screen's fastest refresh (8.33 ms) while at FPS 60
+  frames show every 16.67 ms: a plan that starts over (after the app comes
+  back) could sit on the refresh between and stay "late" every frame; the
+  pacer now moves a steadily late plan by the whole refresh (at most a
+  frame period each time the pace starts over). After the "shown" line, a
+  look line while there was a drag (`IOSTouch_LookStats`): drag frames,
+  ones with no new touches, no turn, playback past the newest touch,
+  touches per frame, the newest touch's age, the lag, the longest gap.
 - **iOS code:** `ios/`: `i_ios.mm` (main, paths, the picker's fallback, the
   error alert, the log, MoltenVK, frame cap and log), `IOSPicker.mm`,
   `IOSTouch.m`/`.h`, `IOSGame.cpp`/`.h`, `IOSCamera.cpp`/`.h`,
@@ -139,8 +151,10 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   1 -width 1688 -height 780 +vid_fullscreen 0 -nosound -exec <cfg>`,
   `HOME=<scratch>`, `IOSCAM_DIR=<photos>`. Vulkan runs on llvmpipe there.
   `IOSRIG_SCREEN="956 440 62 0 62 21"` sets the rig's phone (points, insets;
-  default the iPhone 14's 844x390); the tray's HUD/FACE are kept in
-  `$HOME/.iosrig-hud` (the phone's NSUserDefaults).
+  default the iPhone 14's 844x390); the tray's HUD/FACE/HUD strength are
+  kept in `$HOME/.iosrig-hud` (the phone's NSUserDefaults); `ios_rig
+  hudslide <0.2-1>` moves the open HUD slider, `ios_rig lookstats` prints
+  the look line.
   `wait` only works inside one line: join the script's lines with `;`.
 - Commands: `ios_rig down/move/up <id> <x y | @BUTTON>` (`@MENU`,
   `@TRAYLOOK`, `@TRAYCHEAT`, `@SAVE`, `@CAMERA`...), `ios_rig tapslice
@@ -180,7 +194,8 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   - SAVE / LOAD: tap = DOOM's Save Game / Load Game menu; a 0.3 s hold with
     a ring = quick save / quick load. Sliding off cancels; SAVE wins a tie.
   - MENU: tap = game menu; hold 0.45 s = tray with LOOK, ALWAYS RUN, SENS,
-    GYRO, OPACITY, HUD, FACE, FPS, CAMERA, CHEAT, LEVEL (single player, in a level),
+    GYRO, OPACITY, HUD (tap: the next look; held: its strength's slider),
+    FACE, FPS, CAMERA, CHEAT, LEVEL (single player, in a level),
     NOCLIP (the cheat on), GAMES (more than one game), keyboard (the
     console), and the build stamp under it.
   - LOOK: the drag's look speed, shown on it ("LOOK 1x"); a tap steps 0.5,

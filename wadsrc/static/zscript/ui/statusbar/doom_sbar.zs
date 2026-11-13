@@ -46,7 +46,11 @@ class DoomStatusBar : BaseStatusBar
 		if (state == HUD_StatusBar)
 		{
 			BeginStatusBar();
+			// Added (iOS touch): the HUD CLASSIC at the strength the tray's HUD slider gives
+			bool iosFade = int(IOSHud(0)) == 2;
+			if (iosFade) Alpha = IOSHud(7);
 			DrawMainBar (TicFrac);
+			if (iosFade) Alpha = 1.;
 		}
 		else if (state == HUD_Fullscreen)
 		{
@@ -84,6 +88,7 @@ class DoomStatusBar : BaseStatusBar
 
 	Shape2D mIOSFill, mIOSEdge;
 	double mIOSU;           // screen pixels per mockup pixel
+	double mIOSA;           // how strongly it shows (the tray's HUD slider)
 	int mIOSHealth, mIOSArmor, mIOSAmmo, mIOSArmorCr, mIOSAmmoCr;
 	bool mIOSBlue, mIOSLow;
 	TextureID mIOSAmmoIcon;
@@ -106,7 +111,7 @@ class DoomStatusBar : BaseStatusBar
 	{
 		double u = mIOSU;
 		Screen.DrawTexture(tex, false, x * u, (ymid - h / 2) * u, DTA_DestWidthF, w * u, DTA_DestHeightF, h * u,
-			DTA_LeftOffset, 0, DTA_TopOffset, 0);
+			DTA_LeftOffset, 0, DTA_TopOffset, 0, DTA_Alpha, mIOSA);
 	}
 
 	// A part's width (mockup pixels), and drawn at x (its left) when draw
@@ -116,7 +121,7 @@ class DoomStatusBar : BaseStatusBar
 		double u = mIOSU;
 		if (part == IOSP_GAP)
 		{
-			if (draw) Screen.DrawThickLine((x + 11) * u, (ymid - 14) * u, (x + 11) * u, (ymid + 14) * u, 2 * u, Color(255, 255, 255, 255), 60);
+			if (draw) Screen.DrawThickLine((x + 11) * u, (ymid - 14) * u, (x + 11) * u, (ymid + 14) * u, 2 * u, Color(255, 255, 255, 255), int(60 * mIOSA));
 			return 22;
 		}
 		if (part == IOSP_FACE)
@@ -135,7 +140,7 @@ class DoomStatusBar : BaseStatusBar
 				Vector2 fs = TexMan.GetScaledSize(face), fo = TexMan.GetScaledOffset(face);
 				double fx = x + (ro.X - fo.X) * k, fy = ymid - 25 + (ro.Y - fo.Y) * k;
 				Screen.DrawTexture(face, false, fx * u, fy * u, DTA_DestWidthF, fs.X * k * u, DTA_DestHeightF, fs.Y * k * u,
-					DTA_LeftOffset, 0, DTA_TopOffset, 0);
+					DTA_LeftOffset, 0, DTA_TopOffset, 0, DTA_Alpha, mIOSA);
 			}
 			return rs.X * k;
 		}
@@ -163,12 +168,12 @@ class DoomStatusBar : BaseStatusBar
 		if (draw)
 		{
 			double y = (ymid - 16 + 2) * u;
-			Screen.DrawText(fnt, cr, x * u, y, str, DTA_ScaleX, 2 * u, DTA_ScaleY, 2 * u);
+			Screen.DrawText(fnt, cr, x * u, y, str, DTA_ScaleX, 2 * u, DTA_ScaleY, 2 * u, DTA_Alpha, mIOSA);
 			if ((part == IOSP_HEALTH || part == IOSP_PCT) && mIOSLow)
 			{
 				// low: pulses brighter red (the bright red added over it), twice a second
 				double a = 0.5 + 0.5 * sin(MSTimeF() * 0.72);
-				Screen.DrawText(fnt, Font.CR_RED, x * u, y, str, DTA_ScaleX, 2 * u, DTA_ScaleY, 2 * u, DTA_Alpha, a * 0.9,
+				Screen.DrawText(fnt, Font.CR_RED, x * u, y, str, DTA_ScaleX, 2 * u, DTA_ScaleY, 2 * u, DTA_Alpha, a * 0.9 * mIOSA,
 					DTA_LegacyRenderStyle, STYLE_Add);
 			}
 		}
@@ -244,8 +249,8 @@ class DoomStatusBar : BaseStatusBar
 			mIOSEdge.PushTriangle(a, a + 1, b);
 			mIOSEdge.PushTriangle(b, a + 1, b + 1);
 		}
-		Screen.DrawShapeFill(Color(255, 10, 6, 4), 135 / 255., mIOSFill);
-		Screen.DrawShapeFill(Color(255, 255, 255, 255), 55 / 255., mIOSEdge);
+		Screen.DrawShapeFill(Color(255, 10, 6, 4), 135 / 255. * mIOSA, mIOSFill);
+		Screen.DrawShapeFill(Color(255, 255, 255, 255), 55 / 255. * mIOSA, mIOSEdge);
 		double x = x0 + 22, ymid = y0 + h / 2;
 		bool first = true;
 		for (int i = 0; i < parts.Size(); i++)
@@ -262,6 +267,7 @@ class DoomStatusBar : BaseStatusBar
 		if (CPlayer == null || CPlayer.mo == null) return;
 		double pillH = IOSHud(2), bottom = IOSHud(3), left = IOSHud(4), right = IOSHud(5), half = IOSHud(6);
 		if (pillH <= 0) return;
+		mIOSA = clamp(IOSHud(7), 0., 1.);
 
 		// what to show
 		mIOSHealth = CPlayer.health;

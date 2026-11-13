@@ -220,7 +220,7 @@ enum {
   KIND_GAMES,    // (MENU's tray, more than one game found) "Switch game", when the touch lifts on it
   KIND_CAMERA,   // CAMERA: a tap, a hold, a slide (see IOSTOUCH_SELFIE_HOLD)
   KIND_CAMSWITCH,// (MENU's tray) shows or hides CAMERA, when the touch lifts on it; held IOSTOUCH_MENU_HOLD, CAMERA's options
-  KIND_HUDSTYLE, // (MENU's tray) the next HUD: SPLIT, STRIP, CLASSIC, NONE, when the touch lifts on it
+  KIND_HUDSTYLE, // (MENU's tray) the next HUD: SPLIT, STRIP, CLASSIC, NONE, when the touch lifts on it; held IOSTOUCH_MENU_HOLD, the HUD's strength (a slider)
   KIND_HUDFACE,  // (MENU's tray) the face in the HUD's pills on or off, when the touch lifts on it
 };
 
@@ -343,6 +343,27 @@ static float _fGyroYaw = 0.0f, _fGyroPitch = 0.0f; // tilt aiming: degrees for t
 // (weapon numbers + 1 here, 0 being none: the list's first weapon is 0)
 static int _iPickPending = 0, _iPickReads = 0, _iPickNow = 0, _bPickGap = 0;
 
+// The look's timing, for the play log's look line (IOSTouch_LookStats,
+// every 5 s while there was a drag): counters only, under _lock. A "drag
+// frame" is a frame that takes the look while the newest touch is under
+// IOSTOUCH_LOOK_DRAG_GAP old and a finger that looks is still down
+// (_bLookFingerDown); touches are each look move's own time
+// (UITouch.timestamp), frames the time IOSTouch_TakeLook reads.
+#define IOSTOUCH_LOOK_DRAG_GAP 0.1
+typedef struct {
+  int ctFrames;          // drag frames
+  int ctNoNew;           // ...with no new touches since the frame before
+  int ctNoTurn;          // ...that turned nothing while the finger moved (look waiting to be taken)
+  int ctPassed;          // ...whose playback time reached the newest touch (all of it taken)
+  int actPer[4];         // ...with 0, 1, 2, 3+ new touches
+  double sumAge, minAge, maxAge; // the newest touch's age at the frame (s)
+  double sumLag, maxLag; // the lag (s)
+  double maxGap;         // the longest gap between two touches in a drag (s)
+} IOSTouchLookStats;
+static IOSTouchLookStats _lookStats;
+static int _ctLookNew = 0; // touches since the last frame
+static int _bLookFingerDown = 0; // (IOSTouch_TakeLook: a finger that looks is down)
+
 // The look not yet taken is dropped (under _lock)
 static void IOSTouch_LookDrop(void)
 {
@@ -350,6 +371,7 @@ static void IOSTouch_LookDrop(void)
   _fLookOutY = _fLookCumY;
   _ctLook = 0;
   _bLookFresh = 0;
+  _ctLookNew = 0;
 }
 
 // A look move of (dx,dy) mouse counts at time t (under _lock)
@@ -358,6 +380,7 @@ static void IOSTouch_LookAdd(double dx, double dy, double t)
   if (_ctLook > 0) {
     const int last = (_iLookFirst + _ctLook - 1) % IOSTOUCH_LOOK_SAMPLES;
     if (t < _atLook[last]) t = _atLook[last]; // (kept in order)
+    if (t - _atLook[last] <= IOSTOUCH_LOOK_DRAG_GAP && t - _atLook[last] > _lookStats.maxGap) _lookStats.maxGap = t - _atLook[last];
     // (a drag starting again: where it stood just before this move)
     if (t - _atLook[last] > 0.1) _ctLook = 0;
   }
@@ -380,6 +403,7 @@ static void IOSTouch_LookAdd(double dx, double dy, double t)
   _afLookAtY[i] = _fLookCumY;
   _ctLook++;
   _bLookFresh = 1;
+  _ctLookNew++;
 }
 
 // The look the game takes this frame, at time now (under _lock): the total
@@ -387,8 +411,21 @@ static void IOSTouch_LookAdd(double dx, double dy, double t)
 static void IOSTouch_LookTake(double now, float *pfDX, float *pfDY)
 {
   double x = _fLookCumX, y = _fLookCumY;
+  int bDrag = 0, bPassed = 0;
   if (_ctLook > 0) {
     const int last = (_iLookFirst + _ctLook - 1) % IOSTOUCH_LOOK_SAMPLES;
+    // (the log's look line: a frame of a drag, the newest touch's age)
+    const double age = now - _atLook[last];
+    if (age < IOSTOUCH_LOOK_DRAG_GAP && _bLookFingerDown) {
+      IOSTouchLookStats *st = &_lookStats;
+      bDrag = 1;
+      if (st->ctFrames == 0 || age < st->minAge) st->minAge = age;
+      if (st->ctFrames == 0 || age > st->maxAge) st->maxAge = age;
+      st->sumAge += age;
+      st->ctFrames++;
+      if (!_bLookFresh) st->ctNoNew++;
+      st->actPer[_ctLookNew < 3 ? _ctLookNew : 3]++;
+    }
     // the lag: enough that the newest touch is usually still ahead of it
     if (_bLookFresh) {
       double lag = now - _atLook[last] + IOSTOUCH_LOOK_LAG_SPARE;
@@ -416,8 +453,17 @@ static void IOSTouch_LookTake(double now, float *pfDX, float *pfDY)
     else {
       _ctLook = 1; // (all of it taken: only the newest kept)
       _iLookFirst = last;
+      bPassed = 1;
     }
   }
+  if (bDrag) {
+    IOSTouchLookStats *st = &_lookStats;
+    if (bPassed) st->ctPassed++;
+    if (x == _fLookOutX && y == _fLookOutY && (_fLookCumX != _fLookOutX || _fLookCumY != _fLookOutY)) st->ctNoTurn++;
+    st->sumLag += _tLookLag;
+    if (_tLookLag > st->maxLag) st->maxLag = _tLookLag;
+  }
+  _ctLookNew = 0;
   _bLookFresh = 0;
   _tLookLag -= IOSTOUCH_LOOK_LAG_FALL;
   if (_tLookLag < 0.0) _tLookLag = 0.0;
@@ -595,7 +641,14 @@ static IOSTouchRect _rMessages;
 #define IOSTOUCH_PILL_EDGE_MIN 10.0
 #define IOSTOUCH_PILL_CLEAR 14.0
 #define IOSTOUCH_BAR_CLEAR 10.0
+static int _ctHudOpacityOpened = 0; // (a thump each)
 static int _iHudStyle = IOSTOUCH_HUD_SPLIT, _bHudFace = 1, _bHudPrefsLoaded = 0;
+// ...and how strongly the HUD shows (the tray's HUD held: its slider under
+// the tray, as OPACITY's; IOSTOUCH_OPACITY_MIN to 1 in 5% steps; 1 unless
+// changed), whether that slider is open, its hold's ring
+static float _fHudOpacity = 1.0f;
+static int _bHudOpacityOpen = 0;
+static float _fHudRing = 0.0f;
 static void IOSTouch_LoadHudPrefs(void); // (the view's, the rig's)
 static void IOSTouch_SaveHudPrefs(void);
 static void IOSTouch_HudPrefs(void)
@@ -605,6 +658,17 @@ static void IOSTouch_HudPrefs(void)
   IOSTouch_LoadHudPrefs();
   if (_iHudStyle < 0 || _iHudStyle >= IOSTOUCH_HUD_COUNT) _iHudStyle = IOSTOUCH_HUD_SPLIT;
   _bHudFace = _bHudFace != 0;
+  if (!(_fHudOpacity >= 0.2f && _fHudOpacity <= 1.0f)) _fHudOpacity = 1.0f;
+}
+
+// The HUD's strength set (the view's slider, the rig's command): in 5%
+// steps, kept when bSave (as the slider lifts)
+static float IOSTouch_OpacityStep(float k);
+static void IOSTouch_SetHudOpacity(float k, int bSave)
+{
+  IOSTouch_HudPrefs();
+  _fHudOpacity = IOSTouch_OpacityStep(k);
+  if (bSave) IOSTouch_SaveHudPrefs();
 }
 
 // Where the pills go on a W x H point screen with these safe-area insets
@@ -954,6 +1018,7 @@ void IOSTouch_GetHudLayout(IOSTouchHudLayout *p)
   IOSTouch_HudPrefs();
   p->iStyle = _iHudStyle;
   p->bFace = _bHudFace;
+  p->fAlpha = _fHudOpacity;
   if (_fPillW <= 0.0 || _fPillScreenH <= 0.0) {
     p->fPillH = (float)(IOSTOUCH_PILL_H / IOSTOUCH_PILL_REF_H);
     p->fPillBottom = (float)(1.0 - IOSTOUCH_PILL_BOTTOM / IOSTOUCH_PILL_REF_H);
@@ -1426,6 +1491,7 @@ static void IOSTouch_UseTrayButton(int button)
   }
   else if (kind == KIND_OPACITY) {
     _bOpacityOpen = !_bOpacityOpen; // its slider (the tray stays)
+    _bHudOpacityOpen = 0; // (one slider at a time)
     return;
   }
   else if (kind == KIND_LOOKSPEED) {
@@ -2999,7 +3065,8 @@ static void IOSTouch_TouchEnded(const void *touch, double x, double y, int bCanc
         else if (!bSaveHeld) _iRequests |= IOSTOUCH_REQ_LOADMENU;
       }
       else if (IOSTouch_IsTrayButton(s->button)
-               && !((s->button == BTN_TRAYFPS || s->button == BTN_TRAYOPACITY || s->button == BTN_TRAYLOOK || s->button == BTN_TRAYCAM) && s->bFired)) {
+               && !((s->button == BTN_TRAYFPS || s->button == BTN_TRAYOPACITY || s->button == BTN_TRAYLOOK || s->button == BTN_TRAYCAM
+                     || s->button == BTN_TRAYHUD) && s->bFired)) {
         IOSTouch_UseTrayButton(s->button); // (not the tray's FPS slid off, or OPACITY, LOOK or CAMERA once held: that set the default, or opened the options)
       }
       else if (b->kind == KIND_MENU && !s->bFired) {
@@ -3016,6 +3083,7 @@ static void IOSTouch_TouchEnded(const void *touch, double x, double y, int bCanc
     if (s->button == BTN_TRAYCAM) _fCamSwitchRing = 0.0f;
     if (s->button == BTN_TRAYFPS) _fFpsRing = 0.0f;
     if (s->button == BTN_TRAYOPACITY) _fOpacityRing = 0.0f;
+    if (s->button == BTN_TRAYHUD) _fHudRing = 0.0f;
     if (s->button == BTN_TRAYLOOK) _fLookRing = 0.0f;
     if (s->button == BTN_CHEAT) _fCheatRing = 0.0f;
     // MENU held until its tray opened, then slid onto one of its buttons
@@ -3082,6 +3150,7 @@ static void IOSTouch_TickHolds(double now)
   // the furthest along of SAVE's and of LOAD's holds (a touch each)
   _fFpsRing = 0.0f; // (set again below while the tray's FPS is held)
   _fOpacityRing = 0.0f; // (...and OPACITY)
+  _fHudRing = 0.0f; // (...and HUD)
   _fLookRing = 0.0f; // (...and LOOK)
   _fCameraRing = _fCamSwitchRing = 0.0f; // (...and CAMERA, and the tray's)
   float fSaveRing = 0.0f, fLoadRing = 0.0f;
@@ -3145,6 +3214,26 @@ static void IOSTouch_TickHolds(double now)
         _fCamSwitchRing = (float)progress;
       }
     }
+    else if (s->button == BTN_TRAYHUD) {
+      // the tray's HUD held: the HUD's own strength, a slider under the tray
+      // as OPACITY's (the lift then doesn't change the HUD)
+      if (!IOSTouch_LiftsOnButton(s->x, s->y, BTN_TRAYHUD)) {
+        s->bFired = 1;
+        _fHudRing = 0.0f;
+        continue;
+      }
+      const double progress = (now - s->tDown) / IOSTOUCH_MENU_HOLD;
+      if (progress >= 1.0) {
+        s->bFired = 1;
+        _fHudRing = 0.0f;
+        _bHudOpacityOpen = 1;
+        _bOpacityOpen = 0; // (one slider at a time)
+        _ctHudOpacityOpened++;
+      }
+      else {
+        _fHudRing = (float)progress;
+      }
+    }
     else if (s->button == BTN_TRAYOPACITY) {
       // the tray's OPACITY held: back to 100% (the lift then does nothing)
       if (!IOSTouch_LiftsOnButton(s->x, s->y, BTN_TRAYOPACITY)) {
@@ -3158,6 +3247,7 @@ static void IOSTouch_TickHolds(double now)
         _fOpacityRing = 0.0f;
         _fOpacity = 1.0f;
         _bOpacityOpen = 0;
+        _bHudOpacityOpen = 0;
         _ctOpacityResets++;
         IOSTouch_Message("Opacity back to the default, 100%");
       }
@@ -3480,6 +3570,7 @@ static void IOSTouch_ResetTouches(int bReading)
   _bLevelListOpen = 0;
   _fFpsRing = 0.0f;
   _fOpacityRing = 0.0f;
+  _fHudRing = 0.0f;
   _fCameraRing = _fCamSwitchRing = 0.0f;
   IOSTouch_ResetShared(bReading);
 }
@@ -3559,13 +3650,38 @@ void IOSTouch_ReadMove(float *pfMoveX, float *pfMoveY)
 
 void IOSTouch_TakeLook(float *pfDX, float *pfDY)
 {
+  // (for the log's look line: whether a drag is going on)
+  int bDown = 0;
+  for (int i = 0; i < IOSTOUCH_MAX_TOUCHES && !bDown; i++) {
+    const IOSTouchSlot *s = &_aSlots[i];
+    bDown = s->touch && (s->role == ROLE_LOOK || (s->role == ROLE_BUTTON && _aButtons[s->button].bLookWhileHeld));
+  }
   os_unfair_lock_lock(&_lock);
+  _bLookFingerDown = bDown;
   if (_bReading) IOSTouch_LookTake(CACurrentMediaTime(), pfDX, pfDY);
   else {
     IOSTouch_LookDrop();
     *pfDX = *pfDY = 0.0f;
   }
   os_unfair_lock_unlock(&_lock);
+}
+
+// The play log's look line since the last call (0: no drag in that time)
+int IOSTouch_LookStats(char *str, int size)
+{
+  os_unfair_lock_lock(&_lock);
+  const IOSTouchLookStats st = _lookStats;
+  memset(&_lookStats, 0, sizeof(_lookStats));
+  os_unfair_lock_unlock(&_lock);
+  if (st.ctFrames == 0) return 0;
+  snprintf(str, (size_t)size,
+           "iOS: look: %d drag frames, %d with no new touches, %d with no turn while the finger moved, %d where the playback "
+           "passed the newest touch; touches per frame 0:%d 1:%d 2:%d 3+:%d; newest touch's age at the frame min/avg/max "
+           "%.1f/%.1f/%.1f ms; lag avg/max %.1f/%.1f ms; longest gap between touches %.1f ms",
+           st.ctFrames, st.ctNoNew, st.ctNoTurn, st.ctPassed, st.actPer[0], st.actPer[1], st.actPer[2], st.actPer[3],
+           st.minAge * 1e3, st.sumAge / st.ctFrames * 1e3, st.maxAge * 1e3, st.sumLag / st.ctFrames * 1e3, st.maxLag * 1e3,
+           st.maxGap * 1e3);
+  return 1;
 }
 
 void IOSTouch_TakeGyro(float *pfYaw, float *pfPitch)
@@ -3598,12 +3714,14 @@ void IOSTouch_TakeGyro(float *pfYaw, float *pfPitch)
 // ...and the HUD (never set: SPLIT, the face on)
 #define IOSTOUCH_HUD_DEFAULTS_KEY @"iosTouchHud"
 #define IOSTOUCH_HUDFACE_DEFAULTS_KEY @"iosTouchHudFace"
+#define IOSTOUCH_HUDOPACITY_DEFAULTS_KEY @"iosTouchHudOpacity"
 
 static void IOSTouch_LoadHudPrefs(void)
 {
   NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
   if ([d objectForKey:IOSTOUCH_HUD_DEFAULTS_KEY]) _iHudStyle = (int)[d integerForKey:IOSTOUCH_HUD_DEFAULTS_KEY];
   if ([d objectForKey:IOSTOUCH_HUDFACE_DEFAULTS_KEY]) _bHudFace = [d boolForKey:IOSTOUCH_HUDFACE_DEFAULTS_KEY] ? 1 : 0;
+  if ([d objectForKey:IOSTOUCH_HUDOPACITY_DEFAULTS_KEY]) _fHudOpacity = IOSTouch_OpacityStep([d floatForKey:IOSTOUCH_HUDOPACITY_DEFAULTS_KEY]);
 }
 
 static void IOSTouch_SaveHudPrefs(void)
@@ -3611,6 +3729,7 @@ static void IOSTouch_SaveHudPrefs(void)
   NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
   [d setInteger:_iHudStyle forKey:IOSTOUCH_HUD_DEFAULTS_KEY];
   [d setBool:(_bHudFace ? YES : NO) forKey:IOSTOUCH_HUDFACE_DEFAULTS_KEY];
+  [d setFloat:_fHudOpacity forKey:IOSTOUCH_HUDOPACITY_DEFAULTS_KEY];
 }
 
 // The CHEAT icon's width wanted, in the screen's pixels
@@ -3841,6 +3960,10 @@ typedef struct {
   CAShapeLayer *opacityRing; // the tray's OPACITY: held back to 100%...
   UIView *opacityBack;       // ...its slider's backing, a row under the tray...
   UISlider *opacitySlider;   // ...and the slider
+  CAShapeLayer *hudRing;     // the tray's HUD: held, the HUD's strength...
+  UIView *hudOpacityBack;    // ...its slider's backing, a row under the tray (as OPACITY's)...
+  UISlider *hudOpacitySlider;// ...and the slider
+  int ctHudOpacityOpenedFelt;
   float fOpacityLabel;
   int ctOpacityResetsFelt;
   int iMaxFpsLabel;
@@ -4046,6 +4169,28 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
             forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
     [opacityBack addSubview:opacitySlider];
     [self addSubview:opacityBack];
+    // The tray's HUD held: the HUD's strength (kept; 100% unless changed),
+    // its ring and its slider, as OPACITY's
+    IOSTouch_HudPrefs();
+    hudRing = IOSTouch_MakeHoldRing(_aButtons[BTN_TRAYHUD].radius);
+    [aButtonViews[BTN_TRAYHUD].layer addSublayer:hudRing];
+    ctHudOpacityOpenedFelt = _ctHudOpacityOpened;
+    hudOpacityBack = [[UIView alloc] initWithFrame:CGRectMake(0, 0, IOSTOUCH_OPACITY_W, IOSTOUCH_OPACITY_H)];
+    hudOpacityBack.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.55];
+    hudOpacityBack.layer.cornerRadius = IOSTOUCH_OPACITY_H * 0.5;
+    hudOpacityBack.layer.borderWidth = 1.5;
+    hudOpacityBack.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.4].CGColor;
+    hudOpacityBack.hidden = YES;
+    hudOpacitySlider = [[UISlider alloc] initWithFrame:CGRectMake(16, 7, IOSTOUCH_OPACITY_W - 32, 30)];
+    hudOpacitySlider.minimumValue = IOSTOUCH_OPACITY_MIN;
+    hudOpacitySlider.maximumValue = 1.0;
+    hudOpacitySlider.value = _fHudOpacity;
+    hudOpacitySlider.minimumTrackTintColor = [UIColor colorWithRed:1.0 green:0.75 blue:0.3 alpha:0.95];
+    [hudOpacitySlider addTarget:self action:@selector(hudOpacitySlid:) forControlEvents:UIControlEventValueChanged];
+    [hudOpacitySlider addTarget:self action:@selector(hudOpacityLifted:)
+               forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
+    [hudOpacityBack addSubview:hudOpacitySlider];
+    [self addSubview:hudOpacityBack];
     [self applyMaxFps];
     [self applyMaxFps];
     UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold];
@@ -4330,6 +4475,25 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
   [[NSUserDefaults standardUserDefaults] setFloat:_fOpacity forKey:IOSTOUCH_OPACITY_DEFAULTS_KEY];
 }
 
+// The HUD's slider (the tray's HUD held): the game's HUD follows it as it
+// slides (IOSTouch_GetHudLayout's fAlpha), the strength is kept as it lifts
+- (void)hudOpacitySlid:(UISlider *)slider
+{
+  if (!_bHudOpacityOpen || !_bTrayOpen) {
+    slider.value = _fHudOpacity;
+    return;
+  }
+  IOSTouch_SetHudOpacity(slider.value, 0);
+  [self refreshButtonLooks];
+}
+
+- (void)hudOpacityLifted:(UISlider *)slider
+{
+  [self hudOpacitySlid:slider];
+  slider.value = _fHudOpacity;
+  IOSTouch_SetHudOpacity(_fHudOpacity, 1);
+}
+
 // What the tray's FPS says: the frame rate asked for ("FPS\n60")
 - (void)refreshMaxFpsLabel
 {
@@ -4380,6 +4544,18 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
       [self bringSubviewToFront:opacityBack];
     }
     if (opacityBack.hidden == bShow) opacityBack.hidden = !bShow;
+  }
+  // ...and the HUD's, under HUD
+  {
+    const int bShow = _bHudOpacityOpen && _bTrayOpen;
+    if (bShow) {
+      const CGFloat w = IOSTOUCH_OPACITY_W, h = IOSTOUCH_OPACITY_H;
+      const CGFloat cx = fmax(fmin(_aButtons[BTN_TRAYHUD].x, self.bounds.size.width - self.safeAreaInsets.right - 8 - w * 0.5),
+                              self.safeAreaInsets.left + 8 + w * 0.5);
+      hudOpacityBack.frame = CGRectMake(round(cx - w * 0.5), round(_aButtons[BTN_TRAYHUD].y + 52 + 18 - h * 0.5), w, h);
+      [self bringSubviewToFront:hudOpacityBack];
+    }
+    if (hudOpacityBack.hidden == bShow) hudOpacityBack.hidden = !bShow;
   }
   for (int i = 0; i < IOSTOUCH_NUM_BUTTONS; i++) {
     UILabel *l = aButtonViews[i];
@@ -4482,6 +4658,7 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
   [self setRing:menuRing progress:_fMenuRing];
   [self setRing:fpsRing progress:_fFpsRing];
   [self setRing:opacityRing progress:_fOpacityRing];
+  [self setRing:hudRing progress:_fHudRing];
   [self setRing:lookRing progress:_fLookRing];
   [self setRing:cheatRing progress:_fCheatRing];
   [self setRing:cameraRing progress:_fCameraRing];
@@ -4975,6 +5152,7 @@ static void IOSTouch_DrawWheelTheme(const IOSTouchWheelTheme *t, CGPoint c, doub
   [self setRing:menuRing progress:_fMenuRing];
   [self setRing:fpsRing progress:_fFpsRing];
   [self setRing:opacityRing progress:_fOpacityRing];
+  [self setRing:hudRing progress:_fHudRing];
   [self setRing:lookRing progress:_fLookRing];
   [self setRing:cheatRing progress:_fCheatRing];
   [self setRing:cameraRing progress:_fCameraRing];
@@ -5002,6 +5180,13 @@ static void IOSTouch_DrawWheelTheme(const IOSTouchWheelTheme *t, CGPoint c, doub
     [self refreshButtonLooks];
     [self refreshStick];
   }
+  // HUD held: its slider opens (a thump; the slider at the HUD's strength)
+  if (ctHudOpacityOpenedFelt != _ctHudOpacityOpened) {
+    ctHudOpacityOpenedFelt = _ctHudOpacityOpened;
+    [fpsThump impactOccurred];
+    hudOpacitySlider.value = _fHudOpacity;
+    [self refreshButtonLooks];
+  }
   // FPS held: 60 or 120 (a thump, its label, the screen asked)
   if (ctMaxFpsFelt != _ctMaxFpsChanges) {
     ctMaxFpsFelt = _ctMaxFpsChanges;
@@ -5022,7 +5207,8 @@ static void IOSTouch_DrawWheelTheme(const IOSTouchWheelTheme *t, CGPoint c, doub
       || aButtonViews[BTN_TRAYGAMES].hidden == IOSTouch_IsShown(BTN_TRAYGAMES)
       || aButtonViews[BTN_CAMERA].hidden == IOSTouch_IsShown(BTN_CAMERA)
       || _bTrayOpen != bTrayWasOpen || _iFpsShown != iFpsWas || iShownNow != iShownWas
-      || opacityBack.hidden == (_bOpacityOpen && _bTrayOpen)) {
+      || opacityBack.hidden == (_bOpacityOpen && _bTrayOpen)
+      || hudOpacityBack.hidden == (_bHudOpacityOpen && _bTrayOpen)) {
     [self refreshButtonLooks];
     [self refreshStick];
   }
