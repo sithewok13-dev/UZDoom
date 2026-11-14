@@ -5326,7 +5326,7 @@ static void IOSTouch_DrawWheelTheme(const IOSTouchWheelTheme *t, CGPoint c, doub
     [self refreshButtonLooks];
   }
   // HUD held, or a row's name tapped: back to the defaults (a thump, the controls, the panel)
-  if (ctOpacityResetsFelt != _ctOpacityResets) {
+  if (ctOpacityResetsFelt != _ctHudResets) {
     ctOpacityResetsFelt = _ctHudResets;
     [fpsThump impactOccurred];
     opacitySlider.value = _fOpacity;
