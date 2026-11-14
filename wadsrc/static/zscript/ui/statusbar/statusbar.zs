@@ -295,6 +295,7 @@ class BaseStatusBar : StatusBarCore native
 	native static TextureID, bool GetInventoryIcon(Inventory item, int flags);
 	// Added (iOS touch): the touch HUD's layout (0: its style, -1 without the touch controls; see shared_sbar.cpp)
 	native static double IOSHud(int which);
+	native static void IOSHudBarTop(double frac); // Added (iOS touch): CLASSIC SPLIT / STRIP
 
 	//---------------------------------------------------------------------------
 	//

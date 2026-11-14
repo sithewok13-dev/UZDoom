@@ -160,8 +160,13 @@ void IOSTouch_GetHudFrame(float afFrame[4]);
    on the left; the gun and the keys on the right: FIRE and its arc move up
    clear of it), STRIP (one pill in the middle), CLASSIC (DOOM's status
    bar: FIRE and its arc keep above it) or NONE; FACE, the doomguy's face in
-   the pills. Where the pills go, in fractions of the screen: */
-enum { IOSTOUCH_HUD_SPLIT = 0, IOSTOUCH_HUD_STRIP, IOSTOUCH_HUD_CLASSIC, IOSTOUCH_HUD_NONE, IOSTOUCH_HUD_COUNT };
+   the pills. CLASSIC SPLIT and CLASSIC STRIP: DOOM's status bar without
+   its stone sides over the whole view, cut at the face to the two bottom
+   corners, or whole in the middle. SIZE: the pills small, medium or large;
+   the classic bars small or normal. Where the pills go, in fractions of the
+   screen (the values are kept in the settings: new ones only at the end): */
+enum { IOSTOUCH_HUD_SPLIT = 0, IOSTOUCH_HUD_STRIP, IOSTOUCH_HUD_CLASSIC, IOSTOUCH_HUD_NONE,
+       IOSTOUCH_HUD_CSPLIT, IOSTOUCH_HUD_CSTRIP, IOSTOUCH_HUD_COUNT };
 typedef struct IOSTouchHudLayout {
   int iStyle;          /* IOSTOUCH_HUD_* */
   int bFace;           /* the face in the pills */
@@ -173,6 +178,7 @@ typedef struct IOSTouchHudLayout {
                           clear of the buttons */
   float fMsgTop;       /* the game's pickup messages start here (of the height): below the top-left buttons */
   float fMsgLeft;      /* ...lined up with NEXT WPN's left edge (of the width) */
+  float fBarScale;     /* CLASSIC SPLIT / STRIP: the status bar's size (1 normal, smaller for SIZE small) */
 } IOSTouchHudLayout;
 void IOSTouch_GetHudLayout(IOSTouchHudLayout *pLayout);
 /* The frame rate asked for in the tray (FPS held): 60 or 120. The screen is

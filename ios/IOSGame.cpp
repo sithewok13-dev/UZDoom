@@ -1140,6 +1140,10 @@ static void FeedGyro(float yaw, float pitch)
 	if (ip) G_AddViewPitch(ip, true);
 }
 
+// CLASSIC SPLIT / STRIP: the top of the status bar as the ZScript drew it
+// (a fraction of the screen's height; 0: not drawn yet)
+static double iosBarTop = 0.0;
+
 void IOSGame_Frame()
 {
 	framesDrawn++;
@@ -1181,6 +1185,9 @@ void IOSGame_Frame()
 		IOSTouch_GetHudLayout(&hl);
 		if (hl.iStyle == IOSTOUCH_HUD_CLASSIC && StatusBar && screen && screenblocks <= 10 && screen->GetHeight() > 0)
 			hud.fBarTop = float(StatusBar->GetTopOfStatusbar()) / screen->GetHeight();
+		// (CLASSIC SPLIT, CLASSIC STRIP: where the status bar's ZScript last drew it)
+		else if ((hl.iStyle == IOSTOUCH_HUD_CSPLIT || hl.iStyle == IOSTOUCH_HUD_CSTRIP) && iosBarTop > 0.0)
+			hud.fBarTop = float(iosBarTop);
 	}
 	IOSTouch_SetWeapons(&wpn);
 	if (mode != IOSTOUCH_HIDDEN)
@@ -1340,11 +1347,14 @@ extern "C" int IOSGame_LastPictureRect(int r[6])
 
 // The HUD: SPLIT and STRIP draw their pills as the full-screen HUD (the
 // Doom status bar's ZScript), NONE nothing, CLASSIC as usual
+void IOSGame_SetBarTop(double frac) { iosBarTop = frac; }
+
 int IOSGame_HudState()
 {
 	IOSTouchHudLayout hl;
 	IOSTouch_GetHudLayout(&hl);
-	if (hl.iStyle == IOSTOUCH_HUD_SPLIT || hl.iStyle == IOSTOUCH_HUD_STRIP) return HUD_Fullscreen;
+	if (hl.iStyle == IOSTOUCH_HUD_SPLIT || hl.iStyle == IOSTOUCH_HUD_STRIP
+		|| hl.iStyle == IOSTOUCH_HUD_CSPLIT || hl.iStyle == IOSTOUCH_HUD_CSTRIP) return HUD_Fullscreen;
 	if (hl.iStyle == IOSTOUCH_HUD_NONE) return HUD_None;
 	return -1;
 }
@@ -1370,6 +1380,7 @@ double IOSGame_HudValue(int which, double w, double h)
 	case 7: return hl.fAlpha;
 	case 8: return hl.fMsgTop * h;
 	case 9: return hl.fMsgLeft * w;
+	case 10: return hl.fBarScale;
 	}
 	return 0;
 }

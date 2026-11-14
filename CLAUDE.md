@@ -57,9 +57,18 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   (single player, where the game's cheats work): god mode and `give all`,
   again at each new level, ammo kept full; the tray's NOCLIP (the game's
   noclip). Off each launch; the button's showing is remembered.
-- **HUD** (tray's HUD: SPLIT -> STRIP -> CLASSIC -> NONE, default SPLIT;
-  FACE on/off; NSUserDefaults `iosTouchHud`, `iosTouchHudFace`): SPLIT,
-  STRIP and NONE fill the screen with the view (`setblocks` 11, as the
+- **HUD** (tray's HUD: SPLIT -> STRIP -> CLASSIC SPLIT -> CLASSIC STRIP ->
+  CLASSIC -> NONE, default SPLIT; FACE on/off; SIZE: the pills small /
+  medium / large (30.6 / 39.8 / 51.7 pt, default medium), the classic bars
+  small (0.75) / normal (default), dimmed for CLASSIC and NONE; NSUserDefaults
+  `iosTouchHud`, `iosTouchHudFace`, `iosTouchHudSize`, `iosTouchHudBarSize`;
+  the style numbers are kept: CSPLIT 4, CSTRIP 5): CLASSIC SPLIT / STRIP
+  are DOOM's status bar over the whole view without the wide STBAR's stone
+  sides (`DoomStatusBar.DrawIOSBar`: clipped; SPLIT cut at 178, the face's
+  edge, to the HUD's corners with `drawOffset`; small = the bar drawn in a
+  320/0.75 x 200/0.75 space), its top told back (`IOSHudBarTop`) so FIRE
+  keeps above it. SPLIT,
+  STRIP, the classic strips and NONE fill the screen with the view (`setblocks` 11, as the
   CAMERA does; `IOSGame_HudState` in `D_Display`); SPLIT/STRIP draw dark
   rounded pills of DOOM's own graphics in the Doom status bar's ZScript
   (`DoomStatusBar.DrawIOSHud`, sizes from `BaseStatusBar.IOSHud` =
@@ -67,8 +76,7 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   owner chose this LARGE size, 1.3x the first mockups', as the only one),
   scaled with the screen's height): SPLIT bottom left [face] | health |
   armour, bottom right ammo | keys, FIRE and its arc lifted 14 pt above
-  them; STRIP one pill in the middle (shrunk to stay clear of the
-  buttons); CLASSIC the status bar, FIRE and its arc above it (its top
+  them; STRIP one pill in the middle, FIRE and its arc lifted above it too; CLASSIC the status bar, FIRE and its arc above it (its top
   from the game, `fBarTop`). The face is the status bar's mugshot; the
   numbers are the status bar's own digits in its own red (as CLASSIC; the
   owner's wish; armour without a %), health under 25 pulsing brighter. The

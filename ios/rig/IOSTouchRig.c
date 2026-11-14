@@ -53,7 +53,8 @@ static void IOSTouch_GyroRunUpdates(int bRun)
 }
 
 // The HUD's settings (the view's NSUserDefaults): a file, $HOME/.iosrig-hud
-// ("<style> <face> <HUD strength> <buttons' strength>"), so a restart keeps
+// ("<style> <face> <HUD strength> <buttons' strength> <pills' size 0-2>
+// <bars' size 0-1>"), so a restart keeps
 // them as the phone does (the last: the phone's iosTouchOpacity)
 static void IOSTouchRig_HudPrefsPath(char *path, size_t size)
 {
@@ -69,13 +70,16 @@ static void IOSTouch_LoadHudPrefs(void)
   if (!f) return;
   int style = 0, face = 1;
   float k = 1.0f, kb = 1.0f;
-  const int n = fscanf(f, "%d %d %f %f", &style, &face, &k, &kb);
+  int size = 1, barSize = 1;
+  const int n = fscanf(f, "%d %d %f %f %d %d", &style, &face, &k, &kb, &size, &barSize);
   if (n >= 2) {
     _iHudStyle = style;
     _bHudFace = face;
   }
   if (n >= 3) _fHudOpacity = IOSTouch_OpacityStep(k);
   if (n >= 4) _fOpacity = IOSTouch_OpacityStep(kb);
+  if (n >= 5) _iHudSize = size;
+  if (n >= 6) _iHudBarSize = barSize;
   fclose(f);
   printf("rig: hud prefs loaded: style %d face %d hud %.2f buttons %.2f\n", _iHudStyle, _bHudFace, (double)_fHudOpacity, (double)_fOpacity);
 }
@@ -86,7 +90,7 @@ static void IOSTouch_SaveHudPrefs(void)
   IOSTouchRig_HudPrefsPath(path, sizeof(path));
   FILE *f = fopen(path, "w");
   if (!f) return;
-  fprintf(f, "%d %d %.2f %.2f\n", _iHudStyle, _bHudFace, (double)_fHudOpacity, (double)_fOpacity);
+  fprintf(f, "%d %d %.2f %.2f %d %d\n", _iHudStyle, _bHudFace, (double)_fHudOpacity, (double)_fOpacity, _iHudSize, _iHudBarSize);
   fclose(f);
 }
 
@@ -162,7 +166,7 @@ static const struct { const char *name; int button; } _aRigNames[] = {
   { "SAVE", BTN_QUICKSAVE }, { "LOAD", BTN_QUICKLOAD }, { "QUICKSAVE", BTN_QUICKSAVE }, { "QUICKLOAD", BTN_QUICKLOAD },
   { "MENU", BTN_MENU }, { "RESUME", BTN_RESUME }, { "TRAYLOOK", BTN_TRAYLOOK }, { "TRAYRUN", BTN_TRAYRUN },
   { "TRAYSENS", BTN_TRAYSENS }, { "TRAYGYRO", BTN_TRAYGYRO }, { "TRAYOPACITY", BTN_TRAYOPACITY },
-  { "TRAYHUD", BTN_TRAYHUD }, { "TRAYFACE", BTN_TRAYFACE }, { "TRAYFPS", BTN_TRAYFPS },
+  { "TRAYHUD", BTN_TRAYHUD }, { "TRAYFACE", BTN_TRAYFACE }, { "TRAYSIZE", BTN_TRAYSIZE }, { "TRAYFPS", BTN_TRAYFPS },
   { "TRAYCAM", BTN_TRAYCAM }, { "TRAYCHEAT", BTN_TRAYCHEAT }, { "TRAYLEVEL", BTN_TRAYLEVEL }, { "TRAYNOCLIP", BTN_TRAYNOCLIP },
   { "TRAYGAMES", BTN_TRAYGAMES }, { "TRAYKEYS", BTN_TRAYKEYS },
 };

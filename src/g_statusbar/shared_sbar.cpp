@@ -667,6 +667,18 @@ DEFINE_ACTION_FUNCTION(DBaseStatusBar, IOSHud)
 #endif
 }
 
+// Added (iOS touch): CLASSIC SPLIT / STRIP: the status bar's top as drawn (a
+// fraction of the screen's height), so FIRE and its arc keep above it
+DEFINE_ACTION_FUNCTION(DBaseStatusBar, IOSHudBarTop)
+{
+	PARAM_PROLOGUE;
+	PARAM_FLOAT(frac);
+#ifdef DOOM_TOUCH
+	IOSGame_SetBarTop(frac);
+#endif
+	return 0;
+}
+
 //---------------------------------------------------------------------------
 //
 // PROC AttachToPlayer

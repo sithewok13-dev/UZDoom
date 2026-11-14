@@ -61,6 +61,12 @@ class DoomStatusBar : BaseStatusBar
 				DrawIOSHud(iosHud == 0, IOSHud(1) != 0);
 				return;
 			}
+			// ...or DOOM's status bar over the whole view (CLASSIC SPLIT, CLASSIC STRIP)
+			if (iosHud == 4 || iosHud == 5)
+			{
+				DrawIOSBar(iosHud == 4, TicFrac);
+				return;
+			}
 			BeginHUD();
 			DrawFullScreenStuff ();
 		}
@@ -332,6 +338,57 @@ class DoomStatusBar : BaseStatusBar
 			mIOSU = u;
 			IOSPill(all, (Screen.GetWidth() / 2) / u - IOSPillWidth(all) / 2, bottom / u);
 		}
+	}
+
+	//---------------------------------------------------------------------------
+	//
+	// Added (iOS touch): the HUD CLASSIC STRIP and CLASSIC SPLIT: DOOM's own
+	// status bar over the whole view (the screen size the CAMERA uses), without
+	// the stone either side of it. STRIP: the bar in the middle at the bottom.
+	// SPLIT: cut at the face, ammo, health, arms and the face to the bottom
+	// left corner, armour, the keys and the ammo list to the bottom right (to
+	// the HUD's edges, as SPLIT's pills). SIZE small: smaller (SetScale). The
+	// HUD slider fades it; its top is told to the touch controls, so FIRE and
+	// its arc keep above it.
+	//
+	//---------------------------------------------------------------------------
+
+	void DrawIOSBar(bool split, double TicFrac)
+	{
+		// SIZE small: the bar's 320 x 200 drawn in a larger space of the same
+		// shape, at its bottom middle (the status bar's screen scale maps
+		// that space onto the screen)
+		double k = IOSHud(10);
+		if (!(k >= 0.3 && k <= 1.)) k = 1.;
+		int rw = int(320 / k + 0.5), rh = int(200 / k + 0.5);
+		BeginStatusBar(false, rw, rh);
+		Vector2 base = ((rw - 320) / 2., rh - 200);
+		double bx, by, bw, bh;
+		[bx, by, bw, bh] = StatusbarToRealCoords(base.x, 168 + base.y, 320, 32);
+		if (Screen.GetHeight() > 0) IOSHudBarTop(by / Screen.GetHeight());
+		Alpha = clamp(IOSHud(7), 0., 1.);
+		if (!split || bw <= 0)
+		{
+			// (the bar alone: the stone either side is part of the wide STBAR)
+			drawOffset = base;
+			SetClipRect(0, 168, 320, 32);
+			DrawMainBar(TicFrac);
+		}
+		else
+		{
+			// (the face's box ends at 178 of the bar's 320)
+			double sx = bw / 320.;
+			double cut = 178;
+			drawOffset = (base.x + (IOSHud(4) - bx) / sx, base.y);
+			SetClipRect(0, 168, cut, 32);
+			DrawMainBar(TicFrac);
+			drawOffset = (base.x + (IOSHud(5) - (bx + bw)) / sx, base.y);
+			SetClipRect(cut, 168, 320 - cut, 32);
+			DrawMainBar(TicFrac);
+		}
+		drawOffset = (0, 0);
+		ClearClipRect();
+		Alpha = 1.;
 	}
 
 	protected void DrawMainBar (double TicFrac)
