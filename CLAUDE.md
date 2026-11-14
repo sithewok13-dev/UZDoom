@@ -57,10 +57,11 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   (single player, where the game's cheats work): god mode and `give all`,
   again at each new level, ammo kept full; the tray's NOCLIP (the game's
   noclip). Off each launch; the button's showing is remembered.
-- **HUD** (tray's HUD: SPLIT -> STRIP -> CLASSIC SPLIT -> CLASSIC STRIP ->
-  CLASSIC -> NONE, default SPLIT; FACE on/off; SIZE: the pills small /
-  medium / large (30.6 / 39.8 / 51.7 pt, default medium), the classic bars
-  small (0.75) / normal (default), dimmed for CLASSIC and NONE; NSUserDefaults
+- **HUD** (the tray's HUD opens its panel, below; looks: SPLIT, STRIP,
+  CLASSIC SPLIT, CLASSIC STRIP, CLASSIC, NONE, default SPLIT; FACE on/off,
+  the pills only (the classic bars always have the face); SIZE: the pills
+  small / medium / large (30.6 / 39.8 / 51.7 pt, default medium), the
+  classic bars small (0.75) / normal (default); NSUserDefaults
   `iosTouchHud`, `iosTouchHudFace`, `iosTouchHudSize`, `iosTouchHudBarSize`;
   the style numbers are kept: CSPLIT 4, CSTRIP 5): CLASSIC SPLIT / STRIP
   are DOOM's status bar over the whole view without the wide STBAR's stone
@@ -178,10 +179,12 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   1 -width 1688 -height 780 +vid_fullscreen 0 -nosound -exec <cfg>`,
   `HOME=<scratch>`, `IOSCAM_DIR=<photos>`. Vulkan runs on llvmpipe there.
   `IOSRIG_SCREEN="956 440 62 0 62 21"` sets the rig's phone (points, insets;
-  default the iPhone 14's 844x390); the tray's HUD, FACE and both
-  strengths are kept in `$HOME/.iosrig-hud` (the phone's NSUserDefaults);
-  `ios_rig opacityslide <buttons|hud> <0.2-1>` moves a slider of the open
-  OPACITY panel, `ios_rig lookstats` prints the look line.
+  default the iPhone 14's 844x390); the HUD's settings are kept in
+  `$HOME/.iosrig-hud` ("style face hud buttons size barsize", the phone's
+  NSUserDefaults); with HUD's panel open, `ios_rig opacityslide
+  <buttons|hud> <0.2-1>` moves a slider, `ios_rig hudpick <row 0-2>
+  <choice>` taps a choice, `ios_rig hudreset <row 0-4>` a row's name;
+  `ios_rig lookstats` prints the look line.
   `wait` only works inside one line: join the script's lines with `;`.
 - Commands: `ios_rig down/move/up <id> <x y | @BUTTON>` (`@MENU`,
   `@TRAYLOOK`, `@TRAYCHEAT`, `@SAVE`, `@CAMERA`...), `ios_rig tapslice
@@ -221,7 +224,7 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   - SAVE / LOAD: tap = DOOM's Save Game / Load Game menu; a 0.3 s hold with
     a ring = quick save / quick load. Sliding off cancels; SAVE wins a tie.
   - MENU: tap = game menu; hold 0.45 s = tray with LOOK, ALWAYS RUN, SENS,
-    GYRO, OPACITY, HUD (the next look), FACE, FPS, CAMERA, CHEAT, LEVEL (single player, in a level),
+    GYRO, HUD (its panel), FPS, CAMERA, CHEAT, LEVEL (single player, in a level),
     NOCLIP (the cheat on), GAMES (more than one game), keyboard (the
     console), and the build stamp under it.
   - LOOK: the drag's look speed, shown on it ("LOOK 1x"); a tap steps 0.5,
@@ -234,11 +237,16 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   - GYRO: OFF (default) / TOUCH (aims while either thumb is down; lifting
     both freezes the view) / ALWAYS. SENS 1.0/1.5/2.0/3.0 (the gyro's
     only), default 1.5. Remembered.
-  - OPACITY: tap = a panel under the tray (`IOSTouch_OpacityPanel`) with
-    two sliders, BUTTONS (the controls: `iosTouchOpacity`) and HUD (the
-    game's HUD: `iosTouchHudOpacity`), each 20% to 100% in 5% steps, live,
-    saved on lift, default 100%; hold = both back to 100% (toast, haptic).
-    The tray and the wheel stay at full.
+  - HUD (replaces OPACITY, FACE and SIZE; the owner's design, for all the
+    ports): its label is the look ("HUD\nSPLIT", "CLASSIC\nSPLIT"); tap =
+    a panel under the tray (`IOSTouch_OpacityPanel`, `layoutHudPanel`), a
+    row each: LOOK (the six looks), SIZE (not for CLASSIC or NONE), FACE
+    (SPLIT and STRIP only), HUD (the HUD's opacity: `iosTouchHudOpacity`)
+    and BUTTONS (the controls': `iosTouchOpacity`), the sliders 20% to 100%
+    in 5% steps, live, saved on lift; a choice takes effect at once; a tap
+    on a row's name = that row back to its default (toast, haptic); hold
+    HUD 0.45 s (ring) = everything back (SPLIT, medium, face on, both
+    100%; toast, haptic). The tray and the wheel stay at full.
   - FPS: tap = show/hide the FPS readout; held 0.45 s (ring) = 60 <-> 120
     ("FPS\n60", default 60) with a toast and a haptic. Remembered.
   - NEXT WPN / PREV WPN: tap = next/previous; a 10 pt slide opens the

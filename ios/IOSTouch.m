@@ -212,7 +212,7 @@ enum {
   KIND_LOOKSPEED,// (MENU's tray) the next look speed, when the touch lifts on it; held IOSTOUCH_MENU_HOLD, back to 1x
   KIND_ALWAYSRUN,// (MENU's tray) DOOM's Always Run (cl_run) on or off, when the touch lifts on it
   KIND_WHEEL,    // NEXT WPN, PREV WPN: a tap presses its game button once as it lifts; a slide or a hold opens the weapon wheel
-  KIND_OPACITY,  // (MENU's tray) opens or closes its panel under the tray (BUTTONS, HUD), when the touch lifts on it; held IOSTOUCH_MENU_HOLD, both back to 100%
+  KIND_OPACITY,  // (MENU's tray: HUD) opens or closes its panel under the tray (LOOK, SIZE, FACE, the HUD's and the buttons' opacity), when the touch lifts on it; held IOSTOUCH_MENU_HOLD, all back to the defaults
   KIND_CHEAT,    // CHEAT: held IOSTOUCH_CHEAT_HOLD, the cheat on or off; a tap does nothing
   KIND_CHEATSWITCH, // (MENU's tray) shows CHEAT and switches the cheat on, or leaves cheat mode, when the touch lifts on it
   KIND_LEVELPICK,// (MENU's tray, a level, single player) opens the list of levels, when the touch lifts on it
@@ -220,9 +220,6 @@ enum {
   KIND_GAMES,    // (MENU's tray, more than one game found) "Switch game", when the touch lifts on it
   KIND_CAMERA,   // CAMERA: a tap, a hold, a slide (see IOSTOUCH_SELFIE_HOLD)
   KIND_CAMSWITCH,// (MENU's tray) shows or hides CAMERA, when the touch lifts on it; held IOSTOUCH_MENU_HOLD, CAMERA's options
-  KIND_HUDSTYLE, // (MENU's tray) the next HUD: SPLIT, STRIP, CLASSIC, NONE, when the touch lifts on it
-  KIND_HUDFACE,  // (MENU's tray) the face in the HUD's pills on or off, when the touch lifts on it
-  KIND_HUDSIZE,  // (MENU's tray) the HUD's size: the pills small, medium, large; the classic bars small, normal
 };
 
 // which modes a button shows in
@@ -263,7 +260,7 @@ enum {
   BTN_CAMERA,
   BTN_QUICKSAVE, BTN_QUICKLOAD, BTN_MENU,
   BTN_RESUME,
-  BTN_TRAYLOOK, BTN_TRAYRUN, BTN_TRAYSENS, BTN_TRAYGYRO, BTN_TRAYOPACITY, BTN_TRAYHUD, BTN_TRAYFACE, BTN_TRAYSIZE, BTN_TRAYFPS, BTN_TRAYCAM,
+  BTN_TRAYLOOK, BTN_TRAYRUN, BTN_TRAYSENS, BTN_TRAYGYRO, BTN_TRAYHUD, BTN_TRAYFPS, BTN_TRAYCAM,
   BTN_TRAYCHEAT,
   BTN_TRAYLEVEL, BTN_TRAYNOCLIP, BTN_TRAYGAMES, BTN_TRAYKEYS, // MENU's tray (left to right), hidden unless it is open (LEVEL, NOCLIP and GAMES only when they apply)
   BTN_COUNT
@@ -286,10 +283,7 @@ static IOSTouchButton _aButtons[] = {
   [BTN_TRAYRUN]   = { "ALWAYS\nRUN", KIND_ALWAYSRUN, IOSTOUCH_REQ_RUN,      20.0, 0, SHOW_ALL },
   [BTN_TRAYSENS]  = { "SENS",        KIND_GYROSENS, 0,                      20.0, 0, SHOW_ALL },
   [BTN_TRAYGYRO]  = { "GYRO",        KIND_GYRO,     0,                      20.0, 0, SHOW_ALL },
-  [BTN_TRAYOPACITY] = { "OPACITY",   KIND_OPACITY,  0,                      20.0, 0, SHOW_ALL },
-  [BTN_TRAYHUD]   = { "HUD",         KIND_HUDSTYLE, 0,                      20.0, 0, SHOW_ALL },
-  [BTN_TRAYFACE]  = { "FACE",        KIND_HUDFACE,  0,                      20.0, 0, SHOW_ALL },
-  [BTN_TRAYSIZE]  = { "SIZE",        KIND_HUDSIZE,  0,                      20.0, 0, SHOW_ALL },
+  [BTN_TRAYHUD]   = { "HUD",         KIND_OPACITY,  0,                      20.0, 0, SHOW_ALL },
   [BTN_TRAYFPS]   = { "FPS",         KIND_FPS,      0,                      20.0, 0, SHOW_ALL },
   [BTN_TRAYCAM]   = { "",            KIND_CAMSWITCH, 0,                     20.0, 0, SHOW_ALL },
   [BTN_TRAYCHEAT] = { "CHEAT",       KIND_CHEATSWITCH, 0,                   20.0, 0, SHOW_ALL },
@@ -1126,22 +1120,41 @@ int IOSTouch_MaxFps(void)
 static float _fOpacity = 1.0f;
 static int _bOpacityOpen = 0;
 static float _fOpacityRing = 0.0f;
-static int _ctOpacityResets = 0;
 
-// OPACITY's panel (tapped open under the tray): two rows, BUTTONS (the
-// controls) and HUD (the game's HUD), each a label at its left, a slider
-// and its value; under OPACITY, kept inside the screen's usable edges
-// (clear of the corners and the home indicator) and above the bottom; the
-// narrowest screen (iPhone SE, 667 pt) has room for its 300 pt
-#define IOSTOUCH_OPACITY_PANEL_W 300.0
+// The HUD's panel (HUD tapped open under the tray; the owner's design): a
+// row each, a name at its left (a tap: that row back to its default), then
+// LOOK (the six looks), SIZE (the pills small, medium, large; the classic
+// bars small, normal; not for CLASSIC or NONE), FACE (on, off: the pills
+// only; the classic bars always have the face), HUD (the HUD's opacity, a
+// slider) and BUTTONS (the controls', a slider). A tap takes effect at once.
+// Under HUD, kept inside the screen's usable edges and above the bottom.
+#define IOSTOUCH_OPACITY_PANEL_W 560.0
 #define IOSTOUCH_OPACITY_ROW_H 40.0
 #define IOSTOUCH_OPACITY_PANEL_PAD 6.0
-#define IOSTOUCH_OPACITY_LABEL_W 72.0
+#define IOSTOUCH_OPACITY_LABEL_W 78.0
 #define IOSTOUCH_OPACITY_VALUE_W 44.0
+enum { IOSTOUCH_HUDROW_LOOK = 0, IOSTOUCH_HUDROW_SIZE, IOSTOUCH_HUDROW_FACE, IOSTOUCH_HUDROW_HUD, IOSTOUCH_HUDROW_BUTTONS, IOSTOUCH_HUDROWS };
+// LOOK's choices, left to right
+static const int _aiHudLooks[6] = { IOSTOUCH_HUD_SPLIT, IOSTOUCH_HUD_STRIP, IOSTOUCH_HUD_CSPLIT, IOSTOUCH_HUD_CSTRIP,
+                                    IOSTOUCH_HUD_CLASSIC, IOSTOUCH_HUD_NONE };
+static int IOSTouch_HudRowShown(int row)
+{
+  IOSTouch_HudPrefs();
+  if (row == IOSTOUCH_HUDROW_SIZE) return _iHudStyle != IOSTOUCH_HUD_CLASSIC && _iHudStyle != IOSTOUCH_HUD_NONE;
+  if (row == IOSTOUCH_HUDROW_FACE) return _iHudStyle == IOSTOUCH_HUD_SPLIT || _iHudStyle == IOSTOUCH_HUD_STRIP;
+  return row >= 0 && row < IOSTOUCH_HUDROWS;
+}
+static int IOSTouch_HudRowsShown(void)
+{
+  int n = 0;
+  for (int r = 0; r < IOSTOUCH_HUDROWS; r++) n += IOSTouch_HudRowShown(r);
+  return n;
+}
 static IOSTouchRect IOSTouch_OpacityPanel(void)
 {
-  const double w = IOSTOUCH_OPACITY_PANEL_W, h = 2 * IOSTOUCH_OPACITY_ROW_H + 2 * IOSTOUCH_OPACITY_PANEL_PAD;
-  const IOSTouchButton *o = &_aButtons[BTN_TRAYOPACITY];
+  const double w = fmin(IOSTOUCH_OPACITY_PANEL_W, _fSafeRight - _fSafeLeft);
+  const double h = IOSTouch_HudRowsShown() * IOSTOUCH_OPACITY_ROW_H + 2 * IOSTOUCH_OPACITY_PANEL_PAD;
+  const IOSTouchButton *o = &_aButtons[BTN_TRAYHUD];
   double cx = fmax(fmin(o->x, _fSafeRight - w * 0.5), _fSafeLeft + w * 0.5);
   double y0 = o->y + o->radius + 10.0;
   if (_fSafeBottom > 0.0 && y0 + h > _fSafeBottom) y0 = _fSafeBottom - h;
@@ -1155,6 +1168,56 @@ static float IOSTouch_OpacityStep(float k)
   if (k < IOSTOUCH_OPACITY_MIN) return IOSTOUCH_OPACITY_MIN;
   if (k > 1.0f) return 1.0f;
   return roundf(k / IOSTOUCH_OPACITY_STEP) * IOSTOUCH_OPACITY_STEP;
+}
+
+// The HUD's panel's taps (the view's buttons, the rig's commands): a choice
+// in a row (LOOK: _aiHudLooks' index; SIZE: 0 small, 1 medium or normal, 2
+// large; FACE: 0 on, 1 off), kept at once; the layout follows (its key)
+static int _ctHudResets = 0; // (each a thump: the view's)
+static void IOSTouch_Message(const char *str);
+static void IOSTouch_HudPick(int row, int choice)
+{
+  IOSTouch_HudPrefs();
+  if (row == IOSTOUCH_HUDROW_LOOK && choice >= 0 && choice < 6) _iHudStyle = _aiHudLooks[choice];
+  else if (row == IOSTOUCH_HUDROW_SIZE && IOSTouch_HudIsPills(_iHudStyle) && choice >= 0 && choice <= 2) _iHudSize = choice;
+  else if (row == IOSTOUCH_HUDROW_SIZE && IOSTouch_HudRowShown(row) && choice >= 0 && choice <= 1) _iHudBarSize = choice;
+  else if (row == IOSTOUCH_HUDROW_FACE && IOSTouch_HudRowShown(row) && choice >= 0 && choice <= 1) _bHudFace = (choice == 0);
+  else return;
+  IOSTouch_SaveHudPrefs();
+}
+
+// A row's name tapped: that row back to its default (LOOK SPLIT, SIZE
+// medium or normal, FACE on, either opacity 100%), a toast and a thump
+static void IOSTouch_HudRowReset(int row)
+{
+  IOSTouch_HudPrefs();
+  static const char *const astr[IOSTOUCH_HUDROWS] = {
+    "LOOK back to the default: split", "SIZE back to the default", "FACE back to the default: on",
+    "HUD opacity back to the default: 100%", "BUTTONS opacity back to the default: 100%" };
+  if (row == IOSTOUCH_HUDROW_LOOK) _iHudStyle = IOSTOUCH_HUD_SPLIT;
+  else if (row == IOSTOUCH_HUDROW_SIZE) { if (IOSTouch_HudIsPills(_iHudStyle)) _iHudSize = 1; else _iHudBarSize = 1; }
+  else if (row == IOSTOUCH_HUDROW_FACE) _bHudFace = 1;
+  else if (row == IOSTOUCH_HUDROW_HUD) _fHudOpacity = 1.0f;
+  else if (row == IOSTOUCH_HUDROW_BUTTONS) _fOpacity = 1.0f;
+  else return;
+  IOSTouch_SaveHudPrefs();
+  _ctHudResets++;
+  IOSTouch_Message(astr[row]);
+}
+
+// HUD held: everything in its panel back to the defaults
+static void IOSTouch_HudResetAll(void)
+{
+  IOSTouch_HudPrefs();
+  _iHudStyle = IOSTOUCH_HUD_SPLIT;
+  _iHudSize = 1;
+  _iHudBarSize = 1;
+  _bHudFace = 1;
+  _fHudOpacity = 1.0f;
+  _fOpacity = 1.0f;
+  IOSTouch_SaveHudPrefs();
+  _ctHudResets++;
+  IOSTouch_Message("HUD back to the defaults: split, medium, face on, both opacities 100%");
 }
 
 static float _fFpsRing = 0.0f;
@@ -1535,44 +1598,6 @@ static void IOSTouch_UseTrayButton(int button)
   }
   else if (kind == KIND_LOOKSPEED) {
     IOSTouch_LookNextStep(); // (the tray stays)
-    return;
-  }
-  else if (kind == KIND_HUDSTYLE || kind == KIND_HUDFACE || kind == KIND_HUDSIZE) {
-    // the HUD: at once (the game draws it as it says; the buttons laid out
-    // again for it), kept; the tray stays, for another tap. The looks in
-    // turn: SPLIT, STRIP, CLASSIC SPLIT, CLASSIC STRIP, CLASSIC, NONE
-    static const char *const astrHud[IOSTOUCH_HUD_COUNT] = {
-      "HUD: split, health left, ammo and keys right", "HUD: strip, all in the middle", "HUD: classic status bar", "HUD: none",
-      "HUD: classic split, the bar in two", "HUD: classic strip, the bar without its sides" };
-    static const int aiNext[IOSTOUCH_HUD_COUNT] = {
-      [IOSTOUCH_HUD_SPLIT] = IOSTOUCH_HUD_STRIP, [IOSTOUCH_HUD_STRIP] = IOSTOUCH_HUD_CSPLIT,
-      [IOSTOUCH_HUD_CSPLIT] = IOSTOUCH_HUD_CSTRIP, [IOSTOUCH_HUD_CSTRIP] = IOSTOUCH_HUD_CLASSIC,
-      [IOSTOUCH_HUD_CLASSIC] = IOSTOUCH_HUD_NONE, [IOSTOUCH_HUD_NONE] = IOSTOUCH_HUD_SPLIT };
-    IOSTouch_HudPrefs();
-    if (kind == KIND_HUDSTYLE) {
-      _iHudStyle = aiNext[_iHudStyle];
-      IOSTouch_Message(astrHud[_iHudStyle]);
-    }
-    else if (kind == KIND_HUDSIZE) {
-      static const char *const astrPills[3] = { "HUD size: small", "HUD size: medium", "HUD size: large" };
-      if (IOSTouch_HudIsPills(_iHudStyle)) {
-        _iHudSize = (_iHudSize + 1) % 3;
-        IOSTouch_Message(astrPills[_iHudSize]);
-      }
-      else if (_iHudStyle == IOSTOUCH_HUD_CSPLIT || _iHudStyle == IOSTOUCH_HUD_CSTRIP) {
-        _iHudBarSize = !_iHudBarSize;
-        IOSTouch_Message(_iHudBarSize ? "HUD size: normal" : "HUD size: small");
-      }
-      else {
-        IOSTouch_Message("HUD size: only for the split and strip looks");
-        return;
-      }
-    }
-    else {
-      _bHudFace = !_bHudFace;
-      IOSTouch_Message(_bHudFace ? "HUD: face on" : "HUD: face off");
-    }
-    IOSTouch_SaveHudPrefs();
     return;
   }
   else if (kind == KIND_FPS) {
@@ -3138,7 +3163,7 @@ static void IOSTouch_TouchEnded(const void *touch, double x, double y, int bCanc
         else if (!bSaveHeld) _iRequests |= IOSTOUCH_REQ_LOADMENU;
       }
       else if (IOSTouch_IsTrayButton(s->button)
-               && !((s->button == BTN_TRAYFPS || s->button == BTN_TRAYOPACITY || s->button == BTN_TRAYLOOK || s->button == BTN_TRAYCAM) && s->bFired)) {
+               && !((s->button == BTN_TRAYFPS || s->button == BTN_TRAYHUD || s->button == BTN_TRAYLOOK || s->button == BTN_TRAYCAM) && s->bFired)) {
         IOSTouch_UseTrayButton(s->button); // (not the tray's FPS slid off, or OPACITY, LOOK or CAMERA once held: that set the default, or opened the options)
       }
       else if (b->kind == KIND_MENU && !s->bFired) {
@@ -3154,7 +3179,7 @@ static void IOSTouch_TouchEnded(const void *touch, double x, double y, int bCanc
     if (s->button == BTN_CAMERA) _fCameraRing = 0.0f;
     if (s->button == BTN_TRAYCAM) _fCamSwitchRing = 0.0f;
     if (s->button == BTN_TRAYFPS) _fFpsRing = 0.0f;
-    if (s->button == BTN_TRAYOPACITY) _fOpacityRing = 0.0f;
+    if (s->button == BTN_TRAYHUD) _fOpacityRing = 0.0f;
     if (s->button == BTN_TRAYLOOK) _fLookRing = 0.0f;
     if (s->button == BTN_CHEAT) _fCheatRing = 0.0f;
     // MENU held until its tray opened, then slid onto one of its buttons
@@ -3284,10 +3309,10 @@ static void IOSTouch_TickHolds(double now)
         _fCamSwitchRing = (float)progress;
       }
     }
-    else if (s->button == BTN_TRAYOPACITY) {
-      // the tray's OPACITY held: the buttons and the HUD back to 100% (the
-      // lift then does nothing)
-      if (!IOSTouch_LiftsOnButton(s->x, s->y, BTN_TRAYOPACITY)) {
+    else if (s->button == BTN_TRAYHUD) {
+      // the tray's HUD held: everything in its panel back to the defaults
+      // (the lift then does nothing)
+      if (!IOSTouch_LiftsOnButton(s->x, s->y, BTN_TRAYHUD)) {
         s->bFired = 1;
         _fOpacityRing = 0.0f;
         continue;
@@ -3296,11 +3321,8 @@ static void IOSTouch_TickHolds(double now)
       if (progress >= 1.0) {
         s->bFired = 1;
         _fOpacityRing = 0.0f;
-        _fOpacity = 1.0f;
         _bOpacityOpen = 0;
-        IOSTouch_SetHudOpacity(1.0f, 1);
-        _ctOpacityResets++;
-        IOSTouch_Message("Opacity back to the default, 100%: buttons and HUD");
+        IOSTouch_HudResetAll();
       }
       else {
         _fOpacityRing = (float)progress;
@@ -3944,7 +3966,7 @@ typedef struct {
   // settings have, the resets already felt (a thump each)
   CAShapeLayer *lookRing;
   float fLookLabel, fLookSaved;
-  int iHudLabels; // (what the tray's HUD and FACE say: style + 8 * face)
+  int iHudLabels; // (what the tray's HUD says: the look)
   int ctLookResetsFelt;
   // The stick's run marker (Always Run off): its circle, its "^^", its line
   // to the stick's ring; how it's lit (-1: not yet set); its tick; the ticks
@@ -4018,7 +4040,9 @@ typedef struct {
   UISlider *hudOpacitySlider;// ...and its HUD slider (the game's HUD)
   UILabel *opacityValue, *hudOpacityValue; // (each row's value, at its right)
   int iOpacityValues;        // (what they say: -1 not yet)
-  float fOpacityLabel;
+  UIButton *hudRowName[IOSTOUCH_HUDROWS]; // the HUD panel's rows' names (a tap: that row's default)
+  UIButton *hudChip[3][6];   // ...LOOK's, SIZE's and FACE's choices
+  int iHudPanelKey;          // (what the rows were laid out for: -1 not yet)
   int ctOpacityResetsFelt;
   int iMaxFpsLabel;
   int iMaxFpsSaved;
@@ -4203,48 +4227,76 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
     // The tray's OPACITY: the strength kept (100% unless changed), its ring,
     // and its slider under the tray (hidden until a tap on OPACITY)
     if ([dFps objectForKey:IOSTOUCH_OPACITY_DEFAULTS_KEY]) _fOpacity = IOSTouch_OpacityStep([dFps floatForKey:IOSTOUCH_OPACITY_DEFAULTS_KEY]);
-    fOpacityLabel = -1.0f;
-    ctOpacityResetsFelt = _ctOpacityResets;
-    opacityRing = IOSTouch_MakeHoldRing(_aButtons[BTN_TRAYOPACITY].radius);
-    [aButtonViews[BTN_TRAYOPACITY].layer addSublayer:opacityRing];
-    // OPACITY's panel: BUTTONS (the controls) and HUD (the game's HUD),
-    // each a label at its left, a slider and its value, stacked
+    ctOpacityResetsFelt = _ctHudResets;
+    opacityRing = IOSTouch_MakeHoldRing(_aButtons[BTN_TRAYHUD].radius);
+    [aButtonViews[BTN_TRAYHUD].layer addSublayer:opacityRing];
+    // HUD's panel: a row each (IOSTOUCH_HUDROW_*), its name at its left (a
+    // button: a tap puts that row back to its default), then LOOK's, SIZE's
+    // and FACE's choices, or the HUD's and the buttons' opacity sliders with
+    // their values; laid out as the rows shown change (layoutHudPanel)
     IOSTouch_HudPrefs();
     opacityBack = [[UIView alloc] initWithFrame:CGRectMake(0, 0, IOSTOUCH_OPACITY_PANEL_W,
-                                                           2 * IOSTOUCH_OPACITY_ROW_H + 2 * IOSTOUCH_OPACITY_PANEL_PAD)];
+                                                           IOSTOUCH_HUDROWS * IOSTOUCH_OPACITY_ROW_H + 2 * IOSTOUCH_OPACITY_PANEL_PAD)];
     opacityBack.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.55];
     opacityBack.layer.cornerRadius = IOSTOUCH_OPACITY_H * 0.5;
     opacityBack.layer.borderWidth = 1.5;
     opacityBack.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.4].CGColor;
     opacityBack.hidden = YES;
-    for (int row = 0; row < 2; row++) {
-      const CGFloat y = IOSTOUCH_OPACITY_PANEL_PAD + row * IOSTOUCH_OPACITY_ROW_H;
-      UILabel *name = [[UILabel alloc] initWithFrame:CGRectMake(14, y, IOSTOUCH_OPACITY_LABEL_W - 14, IOSTOUCH_OPACITY_ROW_H)];
-      name.text = row ? @"HUD" : @"BUTTONS";
-      name.font = IOSTouch_TrayFont(12);
-      name.textColor = [UIColor colorWithWhite:1.0 alpha:0.9];
-      name.adjustsFontSizeToFitWidth = YES;
-      name.minimumScaleFactor = 0.7;
+    static NSString *const astrRows[IOSTOUCH_HUDROWS] = { @"LOOK", @"SIZE", @"FACE", @"HUD", @"BUTTONS" };
+    static NSString *const astrLooks[6] = { @"SPLIT", @"STRIP", @"CLASSIC\nSPLIT", @"CLASSIC\nSTRIP", @"CLASSIC", @"NONE" };
+    for (int row = 0; row < IOSTOUCH_HUDROWS; row++) {
+      UIButton *name = [UIButton buttonWithType:UIButtonTypeCustom];
+      [name setTitle:astrRows[row] forState:UIControlStateNormal];
+      [name setTitleColor:[UIColor colorWithWhite:1.0 alpha:0.9] forState:UIControlStateNormal];
+      name.titleLabel.font = IOSTouch_TrayFont(12);
+      name.titleLabel.adjustsFontSizeToFitWidth = YES;
+      name.titleLabel.minimumScaleFactor = 0.7;
+      name.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+      name.tag = row;
+      [name addTarget:self action:@selector(hudRowNameTapped:) forControlEvents:UIControlEventTouchUpInside];
       [opacityBack addSubview:name];
-      UISlider *sl = [[UISlider alloc] initWithFrame:CGRectMake(IOSTOUCH_OPACITY_LABEL_W, y + 5,
+      hudRowName[row] = name;
+      if (row <= IOSTOUCH_HUDROW_FACE) {
+        for (int j = 0; j < 6; j++) {
+          UIButton *chip = [UIButton buttonWithType:UIButtonTypeCustom];
+          NSString *t = row == IOSTOUCH_HUDROW_LOOK ? astrLooks[j] : row == IOSTOUCH_HUDROW_FACE ? (j ? @"OFF" : @"ON") : @"";
+          [chip setTitle:t forState:UIControlStateNormal];
+          [chip setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+          chip.titleLabel.font = IOSTouch_TrayFont(row == IOSTOUCH_HUDROW_LOOK ? 10 : 11);
+          chip.titleLabel.numberOfLines = 2;
+          chip.titleLabel.textAlignment = NSTextAlignmentCenter;
+          chip.titleLabel.adjustsFontSizeToFitWidth = YES;
+          chip.titleLabel.minimumScaleFactor = 0.6;
+          chip.layer.cornerRadius = 15.0;
+          chip.layer.borderWidth = 1.5;
+          chip.tag = row * 10 + j;
+          [chip addTarget:self action:@selector(hudChipTapped:) forControlEvents:UIControlEventTouchUpInside];
+          chip.hidden = YES;
+          [opacityBack addSubview:chip];
+          hudChip[row][j] = chip;
+        }
+        continue;
+      }
+      UISlider *sl = [[UISlider alloc] initWithFrame:CGRectMake(IOSTOUCH_OPACITY_LABEL_W, 5,
                                                                 IOSTOUCH_OPACITY_PANEL_W - IOSTOUCH_OPACITY_LABEL_W - IOSTOUCH_OPACITY_VALUE_W - 6, 30)];
       sl.minimumValue = IOSTOUCH_OPACITY_MIN;
       sl.maximumValue = 1.0;
-      sl.value = row ? _fHudOpacity : _fOpacity;
+      sl.value = row == IOSTOUCH_HUDROW_HUD ? _fHudOpacity : _fOpacity;
       sl.minimumTrackTintColor = [UIColor colorWithRed:1.0 green:0.75 blue:0.3 alpha:0.95];
       [sl addTarget:self action:@selector(opacitySlid:) forControlEvents:UIControlEventValueChanged];
       [sl addTarget:self action:@selector(opacityLifted:)
           forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
       [opacityBack addSubview:sl];
-      UILabel *value = [[UILabel alloc] initWithFrame:CGRectMake(IOSTOUCH_OPACITY_PANEL_W - IOSTOUCH_OPACITY_VALUE_W - 6, y,
+      UILabel *value = [[UILabel alloc] initWithFrame:CGRectMake(IOSTOUCH_OPACITY_PANEL_W - IOSTOUCH_OPACITY_VALUE_W - 6, 0,
                                                                  IOSTOUCH_OPACITY_VALUE_W, IOSTOUCH_OPACITY_ROW_H)];
       value.font = IOSTouch_TrayFont(12);
       value.textColor = [UIColor colorWithWhite:1.0 alpha:0.9];
       value.textAlignment = NSTextAlignmentRight;
       [opacityBack addSubview:value];
-      if (row) { hudOpacitySlider = sl; hudOpacityValue = value; }
+      if (row == IOSTOUCH_HUDROW_HUD) { hudOpacitySlider = sl; hudOpacityValue = value; }
       else { opacitySlider = sl; opacityValue = value; }
     }
+    iHudPanelKey = -1;
     iOpacityValues = -1;
     [self addSubview:opacityBack];
     [self applyMaxFps];
@@ -4511,7 +4563,76 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
   (void)link;
 }
 
-// OPACITY's panel's sliders: BUTTONS, the controls follow it as it slides;
+// HUD's panel laid out for the rows shown (SIZE and FACE come and go with
+// the look), the choices on lit
+- (void)layoutHudPanel
+{
+  IOSTouch_HudPrefs();
+  const CGFloat w = opacityBack.bounds.size.width;
+  const int bPills = IOSTouch_HudIsPills(_iHudStyle);
+  const int key = (int)w * 4096 + _iHudStyle * 256 + _iHudSize * 32 + _iHudBarSize * 8 + _bHudFace;
+  if (key == iHudPanelKey) return;
+  iHudPanelKey = key;
+  const CGFloat rowH = IOSTOUCH_OPACITY_ROW_H, x0 = IOSTOUCH_OPACITY_LABEL_W, avail = w - x0 - 10;
+  int iLook = 0;
+  for (int j = 0; j < 6; j++) if (_aiHudLooks[j] == _iHudStyle) iLook = j;
+  static NSString *const astrPills[3] = { @"SMALL", @"MEDIUM", @"LARGE" };
+  CGFloat y = IOSTOUCH_OPACITY_PANEL_PAD;
+  for (int row = 0; row < IOSTOUCH_HUDROWS; row++) {
+    const int bShown = IOSTouch_HudRowShown(row);
+    hudRowName[row].hidden = !bShown;
+    hudRowName[row].frame = CGRectMake(14, y, x0 - 18, rowH);
+    if (row <= IOSTOUCH_HUDROW_FACE) {
+      const int n = row == IOSTOUCH_HUDROW_LOOK ? 6 : row == IOSTOUCH_HUDROW_FACE ? 2 : (bPills ? 3 : 2);
+      const int sel = row == IOSTOUCH_HUDROW_LOOK ? iLook : row == IOSTOUCH_HUDROW_FACE ? (_bHudFace ? 0 : 1)
+                    : (bPills ? _iHudSize : _iHudBarSize);
+      const CGFloat cw = row == IOSTOUCH_HUDROW_LOOK ? avail / 6.0 : fmin(avail / 3.0, 120.0);
+      for (int j = 0; j < 6; j++) {
+        UIButton *c = hudChip[row][j];
+        c.hidden = !bShown || j >= n;
+        if (c.hidden) continue;
+        if (row == IOSTOUCH_HUDROW_SIZE)
+          [c setTitle:(bPills ? astrPills[j] : (j ? @"NORMAL" : @"SMALL")) forState:UIControlStateNormal];
+        c.frame = CGRectMake(x0 + j * cw + 3, y + 5, cw - 6, rowH - 10);
+        const int bOn = j == sel;
+        c.backgroundColor = bOn ? [UIColor colorWithRed:1.0 green:0.75 blue:0.24 alpha:0.45] : [UIColor colorWithWhite:1.0 alpha:0.1];
+        c.layer.borderColor = (bOn ? [UIColor colorWithRed:1.0 green:0.78 blue:0.31 alpha:1.0] : [UIColor colorWithWhite:1.0 alpha:0.45]).CGColor;
+      }
+    }
+    else {
+      UISlider *sl = row == IOSTOUCH_HUDROW_HUD ? hudOpacitySlider : opacitySlider;
+      UILabel *v = row == IOSTOUCH_HUDROW_HUD ? hudOpacityValue : opacityValue;
+      sl.frame = CGRectMake(x0, y + 5, w - x0 - IOSTOUCH_OPACITY_VALUE_W - 6, 30);
+      v.frame = CGRectMake(w - IOSTOUCH_OPACITY_VALUE_W - 6, y, IOSTOUCH_OPACITY_VALUE_W, rowH);
+    }
+    if (bShown) y += rowH;
+  }
+}
+
+// A choice tapped in HUD's panel: at once, kept (the core); the buttons
+// laid out again for it
+- (void)hudChipTapped:(UIButton *)chip
+{
+  if (!_bOpacityOpen || !_bTrayOpen) return;
+  IOSTouch_HudPick((int)chip.tag / 10, (int)chip.tag % 10);
+  [runTick selectionChanged];
+  iHudPanelKey = -1;
+  [self refreshButtonLooks];
+  [self refreshStick];
+}
+
+// A row's name tapped in HUD's panel: that row back to its default (the
+// core: a toast; a thump follows, as HUD held)
+- (void)hudRowNameTapped:(UIButton *)name
+{
+  if (!_bOpacityOpen || !_bTrayOpen) return;
+  IOSTouch_HudRowReset((int)name.tag);
+  iHudPanelKey = -1;
+  [self refreshButtonLooks];
+  [self refreshStick];
+}
+
+// HUD's panel's sliders: BUTTONS, the controls follow it as it slides;
 // HUD, the game's HUD (IOSTouch_GetHudLayout's fAlpha); each kept as it lifts
 - (void)opacitySlid:(UISlider *)slider
 {
@@ -4557,19 +4678,14 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
     fLookLabel = _fLookScale;
     aButtonViews[BTN_TRAYLOOK].text = [NSString stringWithFormat:@"LOOK\n%gx", (double)_fLookScale];
   }
-  // the HUD's ("HUD\nSPLIT", "FACE\nON")
+  // HUD's: the look ("HUD\nSPLIT", "CLASSIC\nSPLIT")
   IOSTouch_HudPrefs();
-  const int iHud = _iHudStyle + 8 * _bHudFace + 16 * (_iHudSize + 3 * _iHudBarSize);
+  const int iHud = _iHudStyle;
   if (iHudLabels != iHud) {
     static NSString *const astrHud[IOSTOUCH_HUD_COUNT] = { @"HUD\nSPLIT", @"HUD\nSTRIP", @"HUD\nCLASSIC", @"HUD\nNONE",
                                                           @"CLASSIC\nSPLIT", @"CLASSIC\nSTRIP" };
-    static NSString *const astrPills[3] = { @"SIZE\nSMALL", @"SIZE\nMEDIUM", @"SIZE\nLARGE" };
     iHudLabels = iHud;
     aButtonViews[BTN_TRAYHUD].text = astrHud[_iHudStyle];
-    aButtonViews[BTN_TRAYFACE].text = _bHudFace ? @"FACE\nON" : @"FACE\nOFF";
-    aButtonViews[BTN_TRAYSIZE].text = IOSTouch_HudIsPills(_iHudStyle) ? astrPills[_iHudSize]
-                                    : (_iHudStyle == IOSTOUCH_HUD_CSPLIT || _iHudStyle == IOSTOUCH_HUD_CSTRIP)
-                                    ? (_iHudBarSize ? @"SIZE\nNORMAL" : @"SIZE\nSMALL") : @"SIZE";
   }
   // The tray's buttons placed again as LEVEL comes and goes (the core moved
   // them), with the backing
@@ -4579,10 +4695,6 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
     trayBack.frame = CGRectMake(_rTrayBack.x0, _rTrayBack.y0, _rTrayBack.x1 - _rTrayBack.x0, _rTrayBack.y1 - _rTrayBack.y0);
   }
   [self refreshCheat];
-  if (fOpacityLabel != _fOpacity) {
-    fOpacityLabel = _fOpacity;
-    aButtonViews[BTN_TRAYOPACITY].text = [NSString stringWithFormat:@"OPACITY\n%d%%", (int)lroundf(_fOpacity * 100.0f)];
-  }
   // OPACITY's panel: under OPACITY (IOSTouch_OpacityPanel: kept clear of
   // the corners and the home indicator), while it's open; its values
   {
@@ -4590,6 +4702,7 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
     if (bShow) {
       const IOSTouchRect r = IOSTouch_OpacityPanel();
       opacityBack.frame = CGRectMake(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+      [self layoutHudPanel];
       [self bringSubviewToFront:opacityBack];
       const int iValues = (int)lroundf(_fOpacity * 100.0f) * 1000 + (int)lroundf(_fHudOpacity * 100.0f);
       if (iValues != iOpacityValues) {
@@ -4623,7 +4736,7 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
                     || (i == BTN_TRAYRUN && _hud.bRunOn)
                     || (i == BTN_MAP && _hud.bAutomap)
                     || (i == BTN_TRAYCAM && _bShowCamera)
-                    || (i == BTN_TRAYFACE && _bHudFace)
+                    || (i == BTN_TRAYHUD && _bOpacityOpen)
                     || (i == BTN_TRAYNOCLIP && _hud.bNoclip);
     const int bGold = ((i == BTN_CHEAT || i == BTN_TRAYCHEAT || i == BTN_TRAYLEVEL) && _bCheatOn);
     const int bTray = IOSTouch_IsTrayButton(i); // only there while the tray is open
@@ -4631,9 +4744,6 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
     if (i == BTN_TRAYGYRO && !bGyro) alpha *= 0.45;                                       // no gyro here
     if (i == BTN_TRAYSENS && (!bGyro || _iGyroMode == IOSTOUCH_GYRO_OFF)) alpha *= 0.45; // ...or it's off
     if (i == BTN_CAMERA && IOSCamera_IsBusy()) alpha *= 0.45; // (the camera is busy)
-    if (i == BTN_TRAYFACE && _iHudStyle != IOSTOUCH_HUD_SPLIT && _iHudStyle != IOSTOUCH_HUD_STRIP) alpha *= 0.45; // (no pills)
-    if (i == BTN_TRAYSIZE && _iHudStyle != IOSTOUCH_HUD_SPLIT && _iHudStyle != IOSTOUCH_HUD_STRIP
-        && _iHudStyle != IOSTOUCH_HUD_CSPLIT && _iHudStyle != IOSTOUCH_HUD_CSTRIP) alpha *= 0.45; // (one size)
     if (!bTray) alpha *= _fOpacity; // (OPACITY: the controls; the tray at full)
     l.alpha = alpha;
     if (i == BTN_CHEAT && _bCheatRound && cheatImages[0] && cheatImages[1]) {
@@ -5215,12 +5325,13 @@ static void IOSTouch_DrawWheelTheme(const IOSTouchWheelTheme *t, CGPoint c, doub
     [fpsThump impactOccurred];
     [self refreshButtonLooks];
   }
-  // OPACITY held: both back to 100% (a thump, the controls, the sliders)
+  // HUD held, or a row's name tapped: back to the defaults (a thump, the controls, the panel)
   if (ctOpacityResetsFelt != _ctOpacityResets) {
-    ctOpacityResetsFelt = _ctOpacityResets;
+    ctOpacityResetsFelt = _ctHudResets;
     [fpsThump impactOccurred];
     opacitySlider.value = _fOpacity;
-    hudOpacitySlider.value = _fHudOpacity; // (both back to 100%; the HUD's kept by the core)
+    hudOpacitySlider.value = _fHudOpacity; // (as the core set them; the HUD's kept by the core)
+    iHudPanelKey = -1;
     [[NSUserDefaults standardUserDefaults] setFloat:_fOpacity forKey:IOSTOUCH_OPACITY_DEFAULTS_KEY];
     [self refreshButtonLooks];
     [self refreshStick];

@@ -165,8 +165,8 @@ static const struct { const char *name; int button; } _aRigNames[] = {
   { "NEXTWPN", BTN_NEXTWPN }, { "PREVWPN", BTN_PREVWPN }, { "MAP", BTN_MAP }, { "CHEAT", BTN_CHEAT }, { "CAMERA", BTN_CAMERA },
   { "SAVE", BTN_QUICKSAVE }, { "LOAD", BTN_QUICKLOAD }, { "QUICKSAVE", BTN_QUICKSAVE }, { "QUICKLOAD", BTN_QUICKLOAD },
   { "MENU", BTN_MENU }, { "RESUME", BTN_RESUME }, { "TRAYLOOK", BTN_TRAYLOOK }, { "TRAYRUN", BTN_TRAYRUN },
-  { "TRAYSENS", BTN_TRAYSENS }, { "TRAYGYRO", BTN_TRAYGYRO }, { "TRAYOPACITY", BTN_TRAYOPACITY },
-  { "TRAYHUD", BTN_TRAYHUD }, { "TRAYFACE", BTN_TRAYFACE }, { "TRAYSIZE", BTN_TRAYSIZE }, { "TRAYFPS", BTN_TRAYFPS },
+  { "TRAYSENS", BTN_TRAYSENS }, { "TRAYGYRO", BTN_TRAYGYRO },
+  { "TRAYHUD", BTN_TRAYHUD }, { "TRAYFPS", BTN_TRAYFPS },
   { "TRAYCAM", BTN_TRAYCAM }, { "TRAYCHEAT", BTN_TRAYCHEAT }, { "TRAYLEVEL", BTN_TRAYLEVEL }, { "TRAYNOCLIP", BTN_TRAYNOCLIP },
   { "TRAYGAMES", BTN_TRAYGAMES }, { "TRAYKEYS", BTN_TRAYKEYS },
 };
@@ -348,6 +348,19 @@ void IOSTouchRig_Command(const char *cmd)
       IOSTouch_SaveHudPrefs(); // (the rig's file keeps it too)
     }
     printf("rig: opacityslide %s %s (panel %d) -> buttons %.2f hud %.2f\n", argv[1], argv[2], bOpen, (double)_fOpacity, (double)_fHudOpacity);
+  }
+  else if (!strcmp(op, "hudpick") && argc >= 3) {
+    // HUD's panel: a choice tapped (row: 0 LOOK, 1 SIZE, 2 FACE; as the
+    // view's: only while the panel is open)
+    if (_bOpacityOpen && _bTrayOpen) IOSTouch_HudPick(atoi(argv[1]), atoi(argv[2]));
+    printf("rig: hudpick %s %s (panel %d) -> style %d size %d bar %d face %d rows %d\n", argv[1], argv[2], _bOpacityOpen && _bTrayOpen,
+           _iHudStyle, _iHudSize, _iHudBarSize, _bHudFace, IOSTouch_HudRowsShown());
+  }
+  else if (!strcmp(op, "hudreset") && argc >= 2) {
+    // HUD's panel: a row's name tapped (0 LOOK ... 3 HUD, 4 BUTTONS)
+    if (_bOpacityOpen && _bTrayOpen) IOSTouch_HudRowReset(atoi(argv[1]));
+    printf("rig: hudreset %s -> style %d size %d bar %d face %d hud %.2f buttons %.2f\n", argv[1],
+           _iHudStyle, _iHudSize, _iHudBarSize, _bHudFace, (double)_fHudOpacity, (double)_fOpacity);
   }
   else if (!strcmp(op, "lookstats")) {
     char line[512];
