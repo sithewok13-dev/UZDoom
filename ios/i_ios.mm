@@ -394,8 +394,25 @@ extern "C" uint64_t IOS_FrameCap(void)
 	const uint64_t wait = IOSPacer_Wake(iosPacer, IOS_Ns(), period);
 	if (wait > 0)
 	{
-		struct timespec ts = { (time_t)(wait / 1000000000ull), (long)(wait % 1000000000ull) };
-		nanosleep(&ts, nullptr);
+		// The wait serves the main run loop (the game runs on the main
+		// thread), so UIKit hands the touches over as they come; asleep, they
+		// waited for the next frame's pump (build 23's log: during some
+		// stretches half the frames of a drag had no new touch). The last
+		// moment is slept, for an exact start.
+		const uint64_t until = IOS_Ns() + wait;
+		for (;;)
+		{
+			const uint64_t now = IOS_Ns();
+			if (now + 1500000ull >= until) break;
+			if (CFRunLoopRunInMode(kCFRunLoopDefaultMode, (double)(until - now - 1000000ull) * 1e-9, true) == kCFRunLoopRunFinished) break;
+		}
+		const uint64_t now = IOS_Ns();
+		if (now < until)
+		{
+			const uint64_t rest = until - now;
+			struct timespec ts = { (time_t)(rest / 1000000000ull), (long)(rest % 1000000000ull) };
+			nanosleep(&ts, nullptr);
+		}
 	}
 	return wait;
 }

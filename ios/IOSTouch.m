@@ -325,10 +325,10 @@ static int _bMoveRun = 0; // the stick's thumb on its run marker
 // have had 12 (one touch event in one frame, three in the next): seen as
 // judder when turning. What a frame takes lags the finger by at most
 // IOSTOUCH_LOOK_LAG_MAX; nothing is lost (what is left goes next frame).
-#define IOSTOUCH_LOOK_SAMPLES 32
-#define IOSTOUCH_LOOK_LAG_MAX 0.025  // s
+#define IOSTOUCH_LOOK_SAMPLES 64 // (UIKit's in-between places too: up to 240 a second)
+#define IOSTOUCH_LOOK_LAG_MAX 0.045  // s (build 23's log: touches came in batches up to ~35 ms apart for minutes; 25 ms couldn't bridge them)
 #define IOSTOUCH_LOOK_LAG_SPARE 0.002 // s more than the newest touch's
-#define IOSTOUCH_LOOK_LAG_FALL 0.0001 // s a frame: the lag eases back down
+#define IOSTOUCH_LOOK_LAG_FALL 0.0004 // s a frame: the lag eases back down (about 25 ms a second at 60: a 2% slower turn while it falls)
 static double _fLookCumX = 0.0, _fLookCumY = 0.0;   // all the look so far
 static double _fLookOutX = 0.0, _fLookOutY = 0.0;   // ...and what the game has taken of it
 static double _atLook[IOSTOUCH_LOOK_SAMPLES], _afLookAtX[IOSTOUCH_LOOK_SAMPLES], _afLookAtY[IOSTOUCH_LOOK_SAMPLES];
@@ -2984,9 +2984,22 @@ static int IOSTouch_TouchMoved(const void *touch, double x, double y)
 // went next (UIKit merges a finger's moves while the game's frame runs, and
 // keeps the places in between): only SAVE and LOAD care, so a
 // slide off one and back on still ends its hold
-static void IOSTouch_TouchPassed(const void *touch, double x, double y)
+static void IOSTouch_TouchPassed(const void *touch, double x, double y, double tTouch)
 {
   IOSTouchSlot *s = touch ? IOSTouch_FindSlot(touch) : NULL;
+  // The look: each place in between, at its own time (so the frames' turn
+  // follows the finger as the screen sampled it, not as UIKit batched it:
+  // build 23's log had half the frames of a drag with no new touch, then a
+  // jump)
+  if (s && tTouch > 0.0 && (s->role == ROLE_LOOK || (s->role == ROLE_BUTTON && _aButtons[s->button].bLookWhileHeld))) {
+    const float fLookX = (float)(x - s->x) * IOSTOUCH_LOOK_SCALE_X * _fLookScale;
+    const float fLookY = (float)(y - s->y) * IOSTOUCH_LOOK_SCALE_Y * _fLookScale;
+    os_unfair_lock_lock(&_lock);
+    if (_bReading) IOSTouch_LookAdd(fLookX, fLookY, tTouch);
+    os_unfair_lock_unlock(&_lock);
+    s->x = x;
+    s->y = y;
+  }
   // (NEXT WPN and PREV WPN too: a slide that far opens the wheel, even if it
   // came back)
   if (s) IOSTouch_WheelPressSlid(s, x, y);
@@ -5087,7 +5100,8 @@ static void IOSTouch_DrawWheelTheme(const IOSTouchWheelTheme *t, CGPoint c, doub
     // the places UIKit merged into this move (the last one is t's own)
     for (UITouch *c in [event coalescedTouchesForTouch:t]) {
       CGPoint q = [c locationInView:self];
-      IOSTouch_TouchPassed((__bridge const void *)t, q.x, q.y);
+      // (the last is t's own: its look goes with IOSTouch_TouchMoved)
+      IOSTouch_TouchPassed((__bridge const void *)t, q.x, q.y, c.timestamp < t.timestamp ? c.timestamp : 0.0);
     }
     CGPoint p = [t locationInView:self];
     _tTouchStamp = t.timestamp; // (the look goes by the touch's own time)

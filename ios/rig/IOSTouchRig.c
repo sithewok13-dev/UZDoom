@@ -212,7 +212,7 @@ static void IOSTouchRig_MoveTo(int id, double x, double y)
   for (int k = 1; k <= steps; k++) {
     const double f = (double)k / steps;
     const double cx = x0 + (x - x0) * f, cy = y0 + (y - y0) * f;
-    IOSTouch_TouchPassed(t, cx, cy);
+    IOSTouch_TouchPassed(t, cx, cy, 0.0); // (no time: its look goes with the move)
     IOSTouch_TouchMoved(t, cx, cy);
   }
   _afRigX[id] = x;

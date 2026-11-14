@@ -75,8 +75,8 @@ class DoomStatusBar : BaseStatusBar
 	// in the middle. Sizes are the approved mockups' (in their pixels: a pill
 	// 64 high, DOOM's digits twice their size), scaled to the pill's height
 	// the touch controls give (BaseStatusBar.IOSHud); where a graphic is
-	// missing it is left out. Health under 25 pulses brighter red; ammo at a
-	// quarter or less of what can be carried, red.
+	// missing it is left out. The numbers are the status bar's own, in its
+	// own red, as CLASSIC shows them; health under 25 pulses brighter red.
 	//
 	//---------------------------------------------------------------------------
 
@@ -162,7 +162,7 @@ class DoomStatusBar : BaseStatusBar
 		int cr = Font.CR_UNTRANSLATED;
 		if (part == IOSP_HEALTH) str = String.Format("%d", mIOSHealth);
 		else if (part == IOSP_PCT) str = "%";
-		else if (part == IOSP_ARMN) { str = String.Format("%d", mIOSArmor); cr = mIOSArmorCr; }
+		else if (part == IOSP_ARMN) { str = String.Format("%d%%", mIOSArmor); cr = mIOSArmorCr; }
 		else { str = String.Format("%d", mIOSAmmo); cr = mIOSAmmoCr; }
 		double w = fnt.StringWidth(str) * 2;
 		if (draw)
@@ -275,11 +275,13 @@ class DoomStatusBar : BaseStatusBar
 		let armor = BasicArmor(CPlayer.mo.FindInventory("BasicArmor", true));
 		mIOSArmor = (armor != null) ? armor.Amount : 0;
 		mIOSBlue = armor != null && (armor.ArmorType == 'BlueArmor' || armor.SavePercent >= 0.5);
-		mIOSArmorCr = mIOSBlue ? Font.CR_LIGHTBLUE : Font.CR_GREEN;
+		// (the numbers in the status bar's own red, as CLASSIC shows them, the
+		// owner's wish: the armour's kind shows in its icon)
+		mIOSArmorCr = Font.CR_UNTRANSLATED;
 		Inventory ammo1, ammo2;
 		[ammo1, ammo2] = GetCurrentAmmo();
 		mIOSAmmo = ammo1 != null ? ammo1.Amount : -1;
-		mIOSAmmoCr = (ammo1 != null && (ammo1.Amount <= 0 || ammo1.Amount < ammo1.MaxAmount * 0.25)) ? Font.CR_RED : Font.CR_GOLD;
+		mIOSAmmoCr = Font.CR_UNTRANSLATED;
 		mIOSAmmoIcon.SetInvalid();
 		if (ammo1 != null)
 		{

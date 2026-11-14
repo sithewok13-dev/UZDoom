@@ -69,7 +69,9 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   armour, bottom right ammo | keys, FIRE and its arc lifted 14 pt above
   them; STRIP one pill in the middle (shrunk to stay clear of the
   buttons); CLASSIC the status bar, FIRE and its arc above it (its top
-  from the game, `fBarTop`). The face is the status bar's mugshot. The
+  from the game, `fBarTop`). The face is the status bar's mugshot; the
+  numbers are the status bar's own digits in its own red (armour with its
+  %, as CLASSIC; the owner's wish), health under 25 pulsing brighter. The
   HUD's strength is OPACITY's panel's HUD slider (`iosTouchHudOpacity`,
   20%-100%, default 100%): it fades the pills and their contents, and
   CLASSIC's status bar (`Alpha`; it dims over the view's border, the view
@@ -123,7 +125,13 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   slept after reading the time and the touches, and vsync on a 120 Hz screen
   showed a frame at one refresh or the next: judder at "60.0 fps". The look
   is resampled by the touches' own timestamps (`IOSTouch_LookTake`; build
-  14's recording turned 6, 18, 6, 18 px a frame). While the game is held
+  14's recording turned 6, 18, 6, 18 px a frame), UIKit's coalesced
+  touches each a sample at its own time (`IOSTouch_TouchPassed`), the lag
+  up to 45 ms when touches come in batches (build 23's log: half the drag
+  frames without a new touch for minutes, until Control Center was
+  pulled down). The pacer's wait serves the main run loop
+  (`CFRunLoopRunInMode` in `IOS_FrameCap`, the last 1 ms slept) so UIKit
+  can hand touches over while the game waits. While the game is held
   still (wheel, LEVEL list, CAMERA, GAMES) or paused, frames don't wait for
   a tic. Log every 5 s of play (`IOS_PerfFrame`, `i_ios.mm`): fps and a
   frame's ms (its turn's wait, tics, input, drawing, Vulkan's waits), and
