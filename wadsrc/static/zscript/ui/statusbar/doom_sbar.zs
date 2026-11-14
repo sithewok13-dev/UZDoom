@@ -162,7 +162,7 @@ class DoomStatusBar : BaseStatusBar
 		int cr = Font.CR_UNTRANSLATED;
 		if (part == IOSP_HEALTH) str = String.Format("%d", mIOSHealth);
 		else if (part == IOSP_PCT) str = "%";
-		else if (part == IOSP_ARMN) { str = String.Format("%d%%", mIOSArmor); cr = mIOSArmorCr; }
+		else if (part == IOSP_ARMN) { str = String.Format("%d", mIOSArmor); cr = mIOSArmorCr; }
 		else { str = String.Format("%d", mIOSAmmo); cr = mIOSAmmoCr; }
 		double w = fnt.StringWidth(str) * 2;
 		if (draw)

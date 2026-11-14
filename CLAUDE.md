@@ -70,8 +70,8 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   them; STRIP one pill in the middle (shrunk to stay clear of the
   buttons); CLASSIC the status bar, FIRE and its arc above it (its top
   from the game, `fBarTop`). The face is the status bar's mugshot; the
-  numbers are the status bar's own digits in its own red (armour with its
-  %, as CLASSIC; the owner's wish), health under 25 pulsing brighter. The
+  numbers are the status bar's own digits in its own red (as CLASSIC; the
+  owner's wish; armour without a %), health under 25 pulsing brighter. The
   HUD's strength is OPACITY's panel's HUD slider (`iosTouchHudOpacity`,
   20%-100%, default 100%): it fades the pills and their contents, and
   CLASSIC's status bar (`Alpha`; it dims over the view's border, the view
