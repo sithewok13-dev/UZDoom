@@ -1142,6 +1142,8 @@ static int IOSTouch_HudRowShown(int row)
   IOSTouch_HudPrefs();
   if (row == IOSTOUCH_HUDROW_SIZE) return _iHudStyle != IOSTOUCH_HUD_CLASSIC && _iHudStyle != IOSTOUCH_HUD_NONE;
   if (row == IOSTOUCH_HUDROW_FACE) return _iHudStyle == IOSTOUCH_HUD_SPLIT || _iHudStyle == IOSTOUCH_HUD_STRIP;
+  // (the HUD's opacity: not for CLASSIC, the owner's call, nor NONE: nothing to fade)
+  if (row == IOSTOUCH_HUDROW_HUD) return _iHudStyle != IOSTOUCH_HUD_CLASSIC && _iHudStyle != IOSTOUCH_HUD_NONE;
   return row >= 0 && row < IOSTOUCH_HUDROWS;
 }
 static int IOSTouch_HudRowsShown(void)

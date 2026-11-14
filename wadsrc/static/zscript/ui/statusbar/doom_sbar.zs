@@ -46,11 +46,7 @@ class DoomStatusBar : BaseStatusBar
 		if (state == HUD_StatusBar)
 		{
 			BeginStatusBar();
-			// Added (iOS touch): the HUD CLASSIC at the strength the tray's HUD slider gives
-			bool iosFade = int(IOSHud(0)) == 2;
-			if (iosFade) Alpha = IOSHud(7);
 			DrawMainBar (TicFrac);
-			if (iosFade) Alpha = 1.;
 		}
 		else if (state == HUD_Fullscreen)
 		{

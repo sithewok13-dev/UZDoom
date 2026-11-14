@@ -715,6 +715,12 @@ void DStatusBarCore::DrawRotated(FGameTexture* tex, double x, double y, int flag
 
 void DStatusBarCore::DrawString(FFont* font, const FString& cstring, double x, double y, int flags, double Alpha, int translation, int spacing, EMonospacing monospacing, int shadowX, int shadowY, double scaleX, double scaleY, FTranslationID pt, int style)
 {
+#ifdef DOOM_TOUCH
+	// Added (iOS touch): text fades with the status bar as its pictures do
+	// (the HUD slider: CLASSIC SPLIT / STRIP's numbers faded with the bar)
+	Alpha *= this->Alpha;
+	if (Alpha <= 0) return;
+#endif
 	bool monospaced = monospacing != EMonospacing::Off;
 	double dx = 0;
 	int spacingparm = monospaced ? -spacing : spacing;

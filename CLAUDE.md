@@ -81,10 +81,11 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   from the game, `fBarTop`). The face is the status bar's mugshot; the
   numbers are the status bar's own digits in its own red (as CLASSIC; the
   owner's wish; armour without a %), health under 25 pulsing brighter. The
-  HUD's strength is OPACITY's panel's HUD slider (`iosTouchHudOpacity`,
-  20%-100%, default 100%): it fades the pills and their contents, and
-  CLASSIC's status bar (`Alpha`; it dims over the view's border, the view
-  doesn't reach under it).
+  HUD's strength is the HUD panel's HUD slider (`iosTouchHudOpacity`,
+  20%-100%, default 100%): it fades the pills and their contents, and the
+  classic split and strip bars with their numbers (`Alpha`; the status
+  bar's text follows it: `DStatusBarCore::DrawString`). Not for CLASSIC
+  (the owner's call: always at full) or NONE.
 - **Game messages:** pickups and the centre messages at DOOM's own size
   for the screen's height (scale height / 200, `active_con_scaletext` in
   `sbar.h`; about 2x the engine's own on a phone; owner's choice). The
