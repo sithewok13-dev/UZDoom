@@ -72,8 +72,8 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   CAMERA does; `IOSGame_HudState` in `D_Display`); SPLIT/STRIP draw dark
   rounded pills of DOOM's own graphics in the Doom status bar's ZScript
   (`DoomStatusBar.DrawIOSHud`, sizes from `BaseStatusBar.IOSHud` =
-  `IOSTouch_GetHudLayout`: an 83 px pill at 2000x921 (39.8 of 440 pt; the
-  owner chose this LARGE size, 1.3x the first mockups', as the only one),
+  `IOSTouch_GetHudLayout`: medium: an 83 px pill at 2000x921 (39.8 of 440 pt,
+  1.3x the first mockups'; SIZE above),
   scaled with the screen's height): SPLIT bottom left [face] | health |
   armour, bottom right ammo | keys, FIRE and its arc lifted 14 pt above
   them; STRIP one pill in the middle, FIRE and its arc lifted above it too; CLASSIC the status bar, FIRE and its arc above it (its top
