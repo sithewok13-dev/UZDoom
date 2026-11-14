@@ -53,7 +53,14 @@ void PrintPickupMessage(bool localview, const FString &str)
 		const char *pstr = str.GetChars();
 
 		if (pstr[0] == '$')	pstr = GStrings.GetString(pstr + 1);
+#ifdef DOOM_TOUCH
+		// Added (iOS touch): pickups ("Picked up a clip.") only in the
+		// console, not on the screen: the owner's choice (the key messages,
+		// "You need a red key...", are centre messages and still show)
+		if (pstr[0] != 0) Printf(static_cast<PrintFlag>(PRINT_LOW | PRINT_NONOTIFY), "%s\n", pstr);
+#else
 		if (pstr[0] != 0) Printf(PRINT_LOW, "%s\n", pstr);
+#endif
 		StatusBar->FlashCrosshair();
 	}
 }

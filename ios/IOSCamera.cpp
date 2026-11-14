@@ -68,7 +68,7 @@
 // gives up when its photos can't be taken for CAM_GIVE_UP
 #define CAM_SHOW_TIME 0.8
 #define CAM_GIVE_UP 4.0
-// Selfies: the nearest CAM_GROUP_MAX monsters within CAM_GROUP_RANGE
+// Selfies: the doomguy and the nearest CAM_GROUP_MAX - 1 monsters within CAM_GROUP_RANGE
 #define CAM_GROUP_RANGE 1600.0
 #define CAM_GROUP_MAX 12
 // How near the camera keeps to a wall, the floor and the ceiling
@@ -785,11 +785,14 @@ static bool Pose()
 
 static bool SelfieBegin()
 {
-	FindPeople(CAM_GROUP_RANGE, CAM_GROUP_MAX);
-	if (people.empty())
+	FindPeople(CAM_GROUP_RANGE, CAM_GROUP_MAX - 1);
+	// the doomguy himself, first: the arrangements give the first the best
+	// place (nearest the lens, at the front); alone when no one is around
 	{
-		cantWhy = "No one around for a group photo";
-		return false;
+		Person me;
+		memset(&me, 0, sizeof(me));
+		me.act = Player()->mo;
+		people.insert(people.begin(), me);
 	}
 	if (!PickGroupHeading())
 	{
@@ -801,7 +804,7 @@ static bool SelfieBegin()
 	cam.pitch = 0;
 	cam.zoom = 1;
 	camOn = true;
-	showFigure = false;
+	showFigure = true; // (the doomguy is in it)
 	lastTheme = -1;
 	if (!Pose())
 	{

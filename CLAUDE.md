@@ -79,6 +79,9 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   `sbar.h`; about 2x the engine's own on a phone; owner's choice). The
   pickup lines start below NEXT WPN | PREV WPN | MAP, from NEXT WPN's left
   edge (`fMsgTop`/`fMsgLeft` of the HUD layout, `c_notifybuffer.cpp`).
+  Pickup messages only go to the console (`PRINT_NONOTIFY` in
+  `a_pickups.cpp`, the owner's choice); the key and other centre messages
+  still show.
 - **LEVEL** (tray, any single-player level, cheat or not; gold while the
   cheat is on): the game's maps in MAPINFO's order (add-ons' too), the game
   held still while open; a tap is `map <lump>`: a new game at that map
@@ -94,7 +97,9 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   the render's own pixels (Vulkan: `VulkanRenderDevice::IOSReadFrame`, as
   the Raze port's; OpenGL on the rig), clean = the 3D view's window with
   the weapon; saved to Photos (add-only) else Files > DOOM > Screenshots.
-  Selfies: the nearest 12 monsters brought in front of the player's eyes,
+  Selfies: the doomguy himself (first: the best place; shown with
+  `showviewer`, alone if no one is near) and the nearest 11 monsters
+  brought in front of the player's eyes,
   standing (Spawn) or walking (See) frames, facing the lens, an arrangement
   per photo (huddle, peek, rows, corner, tiny, totem, pyramid, lift);
   other living monsters, shots and whatever stands in front of a face
