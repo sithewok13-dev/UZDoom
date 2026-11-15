@@ -61,13 +61,16 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   CLASSIC SPLIT, CLASSIC STRIP, CLASSIC, NONE, default SPLIT; FACE on/off,
   the pills only (the classic bars always have the face); SIZE: the pills
   small / medium / large (30.6 / 39.8 / 51.7 pt, default medium), the
-  classic bars small (0.75) / normal (default); NSUserDefaults
-  `iosTouchHud`, `iosTouchHudFace`, `iosTouchHudSize`, `iosTouchHudBarSize`;
+  classic bars small / medium / large (0.6 / 0.75 / 1, the game's own;
+  default medium); NSUserDefaults `iosTouchHud`, `iosTouchHudFace`,
+  `iosTouchHudSize`, `iosTouchHudBarSize3` (build 30's `iosTouchHudBarSize`
+  0/1 read as medium/large);
   the style numbers are kept: CSPLIT 4, CSTRIP 5): CLASSIC SPLIT / STRIP
   are DOOM's status bar over the whole view without the wide STBAR's stone
   sides (`DoomStatusBar.DrawIOSBar`: clipped; SPLIT cut at 178, the face's
-  edge, to the HUD's corners with `drawOffset`; small = the bar drawn in a
-  320/0.75 x 200/0.75 space), its top told back (`IOSHudBarTop`) so FIRE
+  edge, to the HUD's corners with `drawOffset`, ARMS (104-143) left out so
+  the halves are near the same width, the owner's call; STRIP whole; a
+  size k = the bar drawn in a 320/k x 200/k space), its top told back (`IOSHudBarTop`) so FIRE
   keeps above it. SPLIT,
   STRIP, the classic strips and NONE fill the screen with the view (`setblocks` 11, as the
   CAMERA does; `IOSGame_HudState` in `D_Display`); SPLIT/STRIP draw dark

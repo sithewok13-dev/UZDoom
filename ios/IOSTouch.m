@@ -638,12 +638,13 @@ static IOSTouchRect _rMessages;
 #define IOSTOUCH_PILL_CLEAR 14.0
 #define IOSTOUCH_BAR_CLEAR 10.0
 static int _iHudStyle = IOSTOUCH_HUD_SPLIT, _bHudFace = 1, _bHudPrefsLoaded = 0;
-// SIZE (the tray): the pills' (SPLIT, STRIP: 0 small, 1 medium, 2 large) and
-// the classic bars' (CLASSIC SPLIT, CLASSIC STRIP: 0 small, 1 normal), each
-// remembered; the owner's choices: medium and normal unless changed
+// SIZE (HUD's panel): the pills' (SPLIT, STRIP) and the classic bars'
+// (CLASSIC SPLIT, CLASSIC STRIP), each 0 small, 1 medium, 2 large and
+// remembered; medium unless changed (the owner's choices: the bars' large
+// is the game's own size, medium 0.75 of it, small 0.6)
 static int _iHudSize = 1, _iHudBarSize = 1;
 static const double _afPillSize[3] = { 30.6 / 39.8, 1.0, 1.3 };
-#define IOSTOUCH_BAR_SMALL 0.75
+static const double _afBarSize[3] = { 0.6, 0.75, 1.0 };
 static int IOSTouch_HudIsPills(int style) { return style == IOSTOUCH_HUD_SPLIT || style == IOSTOUCH_HUD_STRIP; }
 static int IOSTouch_HudIsBar(int style) { return style == IOSTOUCH_HUD_CLASSIC || style == IOSTOUCH_HUD_CSPLIT || style == IOSTOUCH_HUD_CSTRIP; }
 // ...and how strongly the HUD shows (the HUD slider in OPACITY's panel;
@@ -659,7 +660,7 @@ static void IOSTouch_HudPrefs(void)
   if (_iHudStyle < 0 || _iHudStyle >= IOSTOUCH_HUD_COUNT) _iHudStyle = IOSTOUCH_HUD_SPLIT;
   _bHudFace = _bHudFace != 0;
   if (_iHudSize < 0 || _iHudSize > 2) _iHudSize = 1;
-  if (_iHudBarSize < 0 || _iHudBarSize > 1) _iHudBarSize = 1;
+  if (_iHudBarSize < 0 || _iHudBarSize > 2) _iHudBarSize = 1;
   if (!(_fHudOpacity >= 0.2f && _fHudOpacity <= 1.0f)) _fHudOpacity = 1.0f;
 }
 
@@ -1032,7 +1033,7 @@ void IOSTouch_GetHudLayout(IOSTouchHudLayout *p)
     p->fLeft = 0.023f;
     p->fRight = 0.977f;
     p->fStripHalf = 0.3f;
-    p->fBarScale = (float)(_iHudBarSize ? 1.0 : IOSTOUCH_BAR_SMALL);
+    p->fBarScale = (float)_afBarSize[_iHudBarSize];
     p->fMsgTop = 0.125f;
     p->fMsgLeft = 0.065f;
     return;
@@ -1043,7 +1044,7 @@ void IOSTouch_GetHudLayout(IOSTouchHudLayout *p)
   p->fRight = (float)(_fPillRight / _fPillW);
   p->fStripHalf = (float)(_fStripHalf / _fPillW);
   p->fMsgTop = (float)(_fMsgTop / _fPillScreenH);
-  p->fBarScale = (float)(_iHudBarSize ? 1.0 : IOSTOUCH_BAR_SMALL);
+  p->fBarScale = (float)_afBarSize[_iHudBarSize];
   p->fMsgLeft = (float)(_fMsgLeft / _fPillW);
 }
 
@@ -1124,7 +1125,7 @@ static float _fOpacityRing = 0.0f;
 // The HUD's panel (HUD tapped open under the tray; the owner's design): a
 // row each, a name at its left (a tap: that row back to its default), then
 // LOOK (the six looks), SIZE (the pills small, medium, large; the classic
-// bars small, normal; not for CLASSIC or NONE), FACE (on, off: the pills
+// bars the same; not for CLASSIC or NONE), FACE (on, off: the pills
 // only; the classic bars always have the face), HUD (the HUD's opacity, a
 // slider) and BUTTONS (the controls', a slider). A tap takes effect at once.
 // Under HUD, kept inside the screen's usable edges and above the bottom.
@@ -1173,7 +1174,7 @@ static float IOSTouch_OpacityStep(float k)
 }
 
 // The HUD's panel's taps (the view's buttons, the rig's commands): a choice
-// in a row (LOOK: _aiHudLooks' index; SIZE: 0 small, 1 medium or normal, 2
+// in a row (LOOK: _aiHudLooks' index; SIZE: 0 small, 1 medium, 2
 // large; FACE: 0 on, 1 off), kept at once; the layout follows (its key)
 static int _ctHudResets = 0; // (each a thump: the view's)
 static void IOSTouch_Message(const char *str);
@@ -1182,14 +1183,14 @@ static void IOSTouch_HudPick(int row, int choice)
   IOSTouch_HudPrefs();
   if (row == IOSTOUCH_HUDROW_LOOK && choice >= 0 && choice < 6) _iHudStyle = _aiHudLooks[choice];
   else if (row == IOSTOUCH_HUDROW_SIZE && IOSTouch_HudIsPills(_iHudStyle) && choice >= 0 && choice <= 2) _iHudSize = choice;
-  else if (row == IOSTOUCH_HUDROW_SIZE && IOSTouch_HudRowShown(row) && choice >= 0 && choice <= 1) _iHudBarSize = choice;
+  else if (row == IOSTOUCH_HUDROW_SIZE && IOSTouch_HudRowShown(row) && choice >= 0 && choice <= 2) _iHudBarSize = choice;
   else if (row == IOSTOUCH_HUDROW_FACE && IOSTouch_HudRowShown(row) && choice >= 0 && choice <= 1) _bHudFace = (choice == 0);
   else return;
   IOSTouch_SaveHudPrefs();
 }
 
 // A row's name tapped: that row back to its default (LOOK SPLIT, SIZE
-// medium or normal, FACE on, either opacity 100%), a toast and a thump
+// medium, FACE on, either opacity 100%), a toast and a thump
 static void IOSTouch_HudRowReset(int row)
 {
   IOSTouch_HudPrefs();
@@ -3789,7 +3790,8 @@ void IOSTouch_TakeGyro(float *pfYaw, float *pfPitch)
 #define IOSTOUCH_HUDFACE_DEFAULTS_KEY @"iosTouchHudFace"
 #define IOSTOUCH_HUDOPACITY_DEFAULTS_KEY @"iosTouchHudOpacity"
 #define IOSTOUCH_HUDSIZE_DEFAULTS_KEY @"iosTouchHudSize"
-#define IOSTOUCH_HUDBARSIZE_DEFAULTS_KEY @"iosTouchHudBarSize"
+#define IOSTOUCH_HUDBARSIZE_DEFAULTS_KEY @"iosTouchHudBarSize3" // (0-2; build 30's iosTouchHudBarSize was 0 small, 1 normal: now medium, large)
+#define IOSTOUCH_HUDBARSIZE_OLD_KEY @"iosTouchHudBarSize"
 
 static void IOSTouch_LoadHudPrefs(void)
 {
@@ -3799,6 +3801,7 @@ static void IOSTouch_LoadHudPrefs(void)
   if ([d objectForKey:IOSTOUCH_HUDOPACITY_DEFAULTS_KEY]) _fHudOpacity = IOSTouch_OpacityStep([d floatForKey:IOSTOUCH_HUDOPACITY_DEFAULTS_KEY]);
   if ([d objectForKey:IOSTOUCH_HUDSIZE_DEFAULTS_KEY]) _iHudSize = (int)[d integerForKey:IOSTOUCH_HUDSIZE_DEFAULTS_KEY];
   if ([d objectForKey:IOSTOUCH_HUDBARSIZE_DEFAULTS_KEY]) _iHudBarSize = (int)[d integerForKey:IOSTOUCH_HUDBARSIZE_DEFAULTS_KEY];
+  else if ([d objectForKey:IOSTOUCH_HUDBARSIZE_OLD_KEY]) _iHudBarSize = [d integerForKey:IOSTOUCH_HUDBARSIZE_OLD_KEY] ? 2 : 1;
 }
 
 static void IOSTouch_SaveHudPrefs(void)
@@ -4585,7 +4588,7 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
     hudRowName[row].hidden = !bShown;
     hudRowName[row].frame = CGRectMake(14, y, x0 - 18, rowH);
     if (row <= IOSTOUCH_HUDROW_FACE) {
-      const int n = row == IOSTOUCH_HUDROW_LOOK ? 6 : row == IOSTOUCH_HUDROW_FACE ? 2 : (bPills ? 3 : 2);
+      const int n = row == IOSTOUCH_HUDROW_LOOK ? 6 : row == IOSTOUCH_HUDROW_FACE ? 2 : 3;
       const int sel = row == IOSTOUCH_HUDROW_LOOK ? iLook : row == IOSTOUCH_HUDROW_FACE ? (_bHudFace ? 0 : 1)
                     : (bPills ? _iHudSize : _iHudBarSize);
       const CGFloat cw = row == IOSTOUCH_HUDROW_LOOK ? avail / 6.0 : fmin(avail / 3.0, 120.0);
@@ -4594,7 +4597,7 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
         c.hidden = !bShown || j >= n;
         if (c.hidden) continue;
         if (row == IOSTOUCH_HUDROW_SIZE)
-          [c setTitle:(bPills ? astrPills[j] : (j ? @"NORMAL" : @"SMALL")) forState:UIControlStateNormal];
+          [c setTitle:astrPills[j] forState:UIControlStateNormal];
         c.frame = CGRectMake(x0 + j * cw + 3, y + 5, cw - 6, rowH - 10);
         const int bOn = j == sel;
         c.backgroundColor = bOn ? [UIColor colorWithRed:1.0 green:0.75 blue:0.24 alpha:0.45] : [UIColor colorWithWhite:1.0 alpha:0.1];

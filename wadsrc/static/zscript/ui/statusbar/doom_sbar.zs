@@ -341,8 +341,8 @@ class DoomStatusBar : BaseStatusBar
 	// Added (iOS touch): the HUD CLASSIC STRIP and CLASSIC SPLIT: DOOM's own
 	// status bar over the whole view (the screen size the CAMERA uses), without
 	// the stone either side of it. STRIP: the bar in the middle at the bottom.
-	// SPLIT: cut at the face, ammo, health, arms and the face to the bottom
-	// left corner, armour, the keys and the ammo list to the bottom right (to
+	// SPLIT: cut at the face, ammo, health and the face (ARMS left out) to the
+	// bottom left corner, armour, the keys and the ammo list to the bottom right (to
 	// the HUD's edges, as SPLIT's pills). SIZE small: smaller (SetScale). The
 	// HUD slider fades it; its top is told to the touch controls, so FIRE and
 	// its arc keep above it.
@@ -372,11 +372,17 @@ class DoomStatusBar : BaseStatusBar
 		}
 		else
 		{
-			// (the face's box ends at 178 of the bar's 320)
+			// (the face's box ends at 178 of the bar's 320; ARMS, 104 to 143,
+			// left out, the owner's call: the two halves near the same width,
+			// and the weapon wheel shows the weapons)
 			double sx = bw / 320.;
-			double cut = 178;
-			drawOffset = (base.x + (IOSHud(4) - bx) / sx, base.y);
-			SetClipRect(0, 168, cut, 32);
+			double cut = 178, arms0 = 104, arms1 = 143;
+			double left = base.x + (IOSHud(4) - bx) / sx;
+			drawOffset = (left, base.y);
+			SetClipRect(0, 168, arms0, 32);
+			DrawMainBar(TicFrac);
+			drawOffset = (left - (arms1 - arms0), base.y);
+			SetClipRect(arms1, 168, cut - arms1, 32);
 			DrawMainBar(TicFrac);
 			drawOffset = (base.x + (IOSHud(5) - (bx + bw)) / sx, base.y);
 			SetClipRect(cut, 168, 320 - cut, 32);
