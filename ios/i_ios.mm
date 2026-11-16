@@ -175,6 +175,14 @@ static bool ChooseHost(FArgs* args)
 	args->AppendRawArg(FStringf("%d", p + 2).GetChars());
 	if (m == 1) args->AppendRawArg("-deathmatch");
 	else if (m == 2) args->AppendRawArg("-altdeath");
+	if (m >= 1)
+	{
+		// deathmatch: no monsters, and an exit kills whoever uses it (DOOM's
+		// own sv_noexit) so the level only changes by the host's LEVEL
+		args->AppendRawArg("-nomonsters");
+		args->AppendRawArg("+sv_noexit");
+		args->AppendRawArg("1");
+	}
 	args->AppendRawArg("-skill");
 	args->AppendRawArg(FStringf("%d", k + 1).GetChars());
 	printf("LAN game: hosting, mode %d, %d players, skill %d\n", m, p + 2, k + 1);

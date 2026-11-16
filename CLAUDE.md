@@ -131,7 +131,8 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
 - **LAN games** (UZDoom's own netcode, `i_net.cpp`): the picker's "LAN
   multiplayer" asks Host or Join first (as the Raze port). Host: which game, (Co-op / Deathmatch / Deathmatch
   items respawn, 2-8 players, skill: `-host N`, `-deathmatch`/`-altdeath`,
-  `-skill`). Join: no game asked: the host tapped opens its game here,
+  `-skill`; deathmatch adds `-nomonsters` and `+sv_noexit 1`: an exit kills
+  its user, the owner's call; the guests get both from the host). Join: no game asked: the host tapped opens its game here,
   matched by the picker's name in the host's answer (`IOSGame_NetName`;
   missing: an alert; a typed address asks which game) (`ios/IOSNet.c` asks the Wi-Fi's /24 with "UZD?" on
   port 5029; a waiting host answers "UZD!UZD1|game|mode|present|wanted",
