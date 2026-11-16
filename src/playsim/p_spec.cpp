@@ -85,7 +85,11 @@ bool FLevelLocals::CheckIfExitIsGood (AActor *self, level_info_t *info)
 	// Is this a deathmatch game and we're not allowed to exit?
 	if ((deathmatch || alwaysapplydmflags) && (dmflags & DF_NO_EXIT))
 	{
+#ifndef DOOM_TOUCH
 		P_DamageMobj (self, self, self, TELEFRAG_DAMAGE, NAME_Exit);
+#endif
+		// Added (iOS LAN games): the exit just does nothing (the owner's
+		// call: no one is killed for using it; the host changes the level)
 		return false;
 	}
 	// Is this a singleplayer game and the next map is part of the same hub and we're dead?

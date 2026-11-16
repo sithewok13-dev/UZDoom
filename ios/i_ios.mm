@@ -177,8 +177,9 @@ static bool ChooseHost(FArgs* args)
 	else if (m == 2) args->AppendRawArg("-altdeath");
 	if (m >= 1)
 	{
-		// deathmatch: no monsters, and an exit kills whoever uses it (DOOM's
-		// own sv_noexit) so the level only changes by the host's LEVEL
+		// deathmatch: no monsters, and the exits do nothing (sv_noexit; the
+		// player isn't killed for it on iOS: p_spec.cpp), so the level only
+		// changes by the host's LEVEL
 		args->AppendRawArg("-nomonsters");
 		args->AppendRawArg("+sv_noexit");
 		args->AppendRawArg("1");
