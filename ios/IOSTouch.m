@@ -1313,7 +1313,7 @@ static void IOSTouch_GyroNextSens(void)
 // with levels to list
 static int IOSTouch_LevelPickShows(void)
 {
-  return _hud.ctLevels > 0 && _iMode == IOSTOUCH_GAMEPLAY; // (single player, cheat or not: the game lists none otherwise)
+  return _hud.ctLevels > 0 && _iMode == IOSTOUCH_GAMEPLAY; // (single player or a network game's host, cheat or not: the game lists none otherwise)
 }
 
 // Whether the tray's LEVEL and NOCLIP are in the tray: the cheat on, where

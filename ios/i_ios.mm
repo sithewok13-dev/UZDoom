@@ -181,8 +181,9 @@ static bool ChooseHost(FArgs* args)
 	return true;
 }
 
-// Joining: the hosts found on the Wi-Fi, or a typed address. false: back
-static bool ChooseJoin(FArgs* args)
+// Joining: the hosts found on the Wi-Fi, or a typed address. Gives the
+// address and the host's game (nil: typed, the game not known). false: back
+static bool ChooseJoin(NSString** pAddress, NSString** pGame)
 {
 	IOSNet_TouchNetwork();
 	for (;;)
@@ -207,21 +208,24 @@ static bool ChooseJoin(FArgs* args)
 		NSMutableArray<NSString*>* titles = [NSMutableArray array];
 		for (int i = 0; i < ctHosts; i++)
 		{
-			[titles addObject:[NSString stringWithFormat:@"%s · %s · %d of %d · %s", hosts[i].strGame, hosts[i].strMode,
-				hosts[i].ctPresent, hosts[i].ctWanted, hosts[i].strAddress]];
+			[titles addObject:[NSString stringWithFormat:@"%s · %s · %d of %d", hosts[i].strGame, hosts[i].strMode,
+				hosts[i].ctPresent, hosts[i].ctWanted]];
 		}
 		const int iType = (int)titles.count;
 		[titles addObject:@"Type an address"];
 		[titles addObject:@"Search again"];
 		[titles addObject:@"Back"];
-		NSString* msg = ctHosts > 0 ? @"Tap a game to join it (you need the same game files as the host)."
+		NSString* msg = ctHosts > 0 ? @"Tap a game to join it. Its game opens here by itself (you need the same game files as the host)."
 			: @"No game found. The host must be waiting for players, on this Wi-Fi.";
 		const int pick = RunAlert(Sheet(@"Join a LAN game", msg), titles, iType + 2);
 		if (pick < 0 || pick == iType + 2) return false;
 		if (pick == iType + 1) continue;
 
-		NSString* address = nil;
-		if (pick < ctHosts) address = [NSString stringWithUTF8String:hosts[pick].strAddress];
+		if (pick < ctHosts)
+		{
+			*pAddress = [NSString stringWithUTF8String:hosts[pick].strAddress];
+			*pGame = [NSString stringWithUTF8String:hosts[pick].strGame];
+		}
 		else
 		{
 			UIAlertController* ask = [UIAlertController alertControllerWithTitle:@"Join a LAN game"
@@ -236,35 +240,79 @@ static bool ChooseJoin(FArgs* args)
 			const int ok = RunAlert(ask, @[ @"Join", @"Back" ], 1);
 			NSString* typed = [ask.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
 			if (ok != 0 || typed.length == 0) continue;
-			address = typed;
+			*pAddress = typed;
+			*pGame = nil;
 		}
-		[NSUserDefaults.standardUserDefaults setObject:address forKey:@"DoomLanLastAddress"];
-		args->AppendRawArg("-join");
-		args->AppendRawArg(address.UTF8String);
-		printf("LAN game: joining %s\n", address.UTF8String);
+		[NSUserDefaults.standardUserDefaults setObject:*pAddress forKey:@"DoomLanLastAddress"];
 		return true;
 	}
 }
 
-// "LAN multiplayer": which game, then host or join. The game's index (its
-// add-on's files in pszFiles), or -1: back to the picker
+// The picker's games (labels), and Back last
+static NSMutableArray<NSString*>* LanGames(int* pCount)
+{
+	NSMutableArray<NSString*>* games = [NSMutableArray array];
+	int ctGames = 0;
+	for (const char* label; (label = IOSPicker_EntryLabel(ctGames)) != NULL; ctGames++)
+		[games addObject:[NSString stringWithUTF8String:label] ?: @"?"];
+	*pCount = ctGames;
+	return games;
+}
+
+// "LAN multiplayer": host or join first. The host picks the game; a guest
+// picks a host, and that host's game opens here (matched by its picker
+// name, which the host's answer carries; a typed address asks which game).
+// The game's index (its add-on's files in pszFiles), or -1: back to the
+// picker
 static int ChooseLan(FArgs* args, char* pszFiles, int ctFiles)
 {
 	for (;;)
 	{
-		NSMutableArray<NSString*>* games = [NSMutableArray array];
-		int ctGames = 0;
-		for (const char* label; (label = IOSPicker_EntryLabel(ctGames)) != NULL; ctGames++)
-			[games addObject:[NSString stringWithUTF8String:label] ?: @"?"];
-		[games addObject:@"Back"];
-		const int g = RunAlert(Sheet(@"LAN multiplayer", @"Which game? (Everyone needs the same game files.)"), games, ctGames);
-		if (g < 0 || g >= ctGames) return -1;
-		NSString* name = games[g];
+		const int c = RunAlert(Sheet(@"LAN multiplayer", @"A game with others on this Wi-Fi"), @[ @"Host a LAN game", @"Join a LAN game", @"Back" ], 2);
+		if (c < 0 || c == 2) return -1;
 
-		const int c = RunAlert(Sheet(name, @"A game with others on this Wi-Fi"), @[ @"Host a LAN game", @"Join a LAN game", @"Back" ], 2);
-		if (c < 0 || c == 2) continue;
-		if (c == 0 ? !ChooseHost(args) : !ChooseJoin(args)) continue;
-		IOSGame_SetNetName(name.UTF8String);
+		int ctGames = 0;
+		NSMutableArray<NSString*>* games = LanGames(&ctGames);
+		if (c == 0)
+		{
+			// hosting: which game, then mode, players, skill
+			[games addObject:@"Back"];
+			const int g = RunAlert(Sheet(@"Host a LAN game", @"Which game? (Everyone needs the same game files.)"), games, ctGames);
+			if (g < 0 || g >= ctGames) continue;
+			if (!ChooseHost(args)) continue;
+			IOSGame_SetNetName(games[g].UTF8String);
+			return IOSPicker_EntryPick(g, pszFiles, ctFiles);
+		}
+
+		// joining: the host's game, found among this phone's
+		NSString* address = nil;
+		NSString* game = nil;
+		if (!ChooseJoin(&address, &game)) continue;
+		int g = -1;
+		if (game)
+		{
+			for (int i = 0; i < ctGames && g < 0; i++)
+				if ([games[i] isEqualToString:game]) g = i;
+			for (int i = 0; i < ctGames && g < 0; i++)
+				if ([games[i] caseInsensitiveCompare:game] == NSOrderedSame) g = i;
+			if (g < 0)
+			{
+				RunAlert([UIAlertController alertControllerWithTitle:@"Join a LAN game"
+					message:[NSString stringWithFormat:@"This phone doesn't have %@. Copy the same game files as the host's into Files > On My iPhone > DOOM, then try again.", game]
+					preferredStyle:UIAlertControllerStyleAlert], @[ @"OK" ], 0);
+				continue;
+			}
+		}
+		else
+		{
+			[games addObject:@"Back"];
+			g = RunAlert(Sheet(@"Join a LAN game", @"Which game is the host playing?"), games, ctGames);
+			if (g < 0 || g >= ctGames) continue;
+		}
+		args->AppendRawArg("-join");
+		args->AppendRawArg(address.UTF8String);
+		printf("LAN game: joining %s (%s)\n", address.UTF8String, games[g].UTF8String);
+		IOSGame_SetNetName(games[g].UTF8String);
 		return IOSPicker_EntryPick(g, pszFiles, ctFiles);
 	}
 }
@@ -292,7 +340,7 @@ namespace IOSLobby
 			char mine[64] = "";
 			IOSNet_WifiAddress(mine, sizeof(mine));
 			[text appendFormat:@"%d of %d players here.", present, wanted];
-			[text appendFormat:@"\n\nThis phone's address: %s\n(the others: LAN multiplayer, the same game, Join)", mine[0] ? mine : "no Wi-Fi?"];
+			[text appendFormat:@"\n\nThis phone's address: %s\n(the others: LAN multiplayer, Join)", mine[0] ? mine : "no Wi-Fi?"];
 		}
 		else
 		{

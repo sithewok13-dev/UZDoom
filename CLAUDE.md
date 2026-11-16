@@ -97,7 +97,7 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   Pickup messages only go to the console (`PRINT_NONOTIFY` in
   `a_pickups.cpp`, the owner's choice); the key and other centre messages
   still show.
-- **LEVEL** (tray, any single-player level, cheat or not; gold while the
+- **LEVEL** (tray, any single-player level or a network game's host, cheat or not; gold while the
   cheat is on): the game's maps in MAPINFO's order (add-ons' too), the game
   held still while open; a tap is `map <lump>`: a new game at that map
   ("Going to ...: a fresh start"; with the cheat, everything given again).
@@ -129,17 +129,22 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   map units; the arrangements were measured in the Wolf3D port's tiles
   (`CAM_S`, 60 units).
 - **LAN games** (UZDoom's own netcode, `i_net.cpp`): the picker's "LAN
-  multiplayer" asks which game, then Host (Co-op / Deathmatch / Deathmatch
+  multiplayer" asks Host or Join first (as the Raze port). Host: which game, (Co-op / Deathmatch / Deathmatch
   items respawn, 2-8 players, skill: `-host N`, `-deathmatch`/`-altdeath`,
-  `-skill`) or Join (`ios/IOSNet.c` asks the Wi-Fi's /24 with "UZD?" on
+  `-skill`). Join: no game asked: the host tapped opens its game here,
+  matched by the picker's name in the host's answer (`IOSGame_NetName`;
+  missing: an alert; a typed address asks which game) (`ios/IOSNet.c` asks the Wi-Fi's /24 with "UZD?" on
   port 5029; a waiting host answers "UZD!UZD1|game|mode|present|wanted",
   in `GetPacket`; or a typed address, kept as `DoomLanLastAddress`:
   `-join IP`). The lobby is `IOSLobby` (in `i_ios.mm`, instead of the
   ZWidget `NetStartWindow`): a box with the players and the host's
   address, Start now (host) and Cancel (the app closes, UZDoom's way).
-  Everyone needs the same files. CAMERA, LEVEL, CHEAT and the wheel's
+  Everyone needs the same files. LEVEL for the host (the settings
+  controller): `changemap`, everyone goes, keeping what they carry, by
+  the score screen (each player taps: ready); the game isn't held while
+  the list is open. CAMERA, CHEAT and the wheel's
   pause are single player only. Rig: two instances on 127.0.0.1;
-  `ios_rignetscan`.
+  `ios_rignetscan`; `ios_rigclick` (a tap the game gets, e.g. ready).
 - **Frame rate:** FPS in the tray (held: 60 <-> 120). The game ticks at 35
   Hz and the renderer interpolates. The pace (`ios/IOSPacer.h`, called as
   `IOS_FrameCap` at the top of `D_DoomLoop`, before the frame's time and the

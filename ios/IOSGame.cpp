@@ -1176,7 +1176,9 @@ void IOSGame_Frame()
 	hud.bNoSaves = netgame; // (QUICK SAVE says when it can't save; QUICK LOAD works dead too)
 	hud.bCheatAllowed = CheatAllowed();
 	hud.strCheatRefusal = hud.bCheatAllowed ? nullptr : CheatRefusal();
-	const bool levelPick = !netgame && gamestate == GS_LEVEL && p != nullptr;
+	// (LEVEL: single player, or the host of a network game: the settings
+	// controller, whose pick takes everyone there)
+	const bool levelPick = gamestate == GS_LEVEL && p != nullptr && (!netgame || players[consoleplayer].settings_controller);
 	if (levelPick && cheatLevels.Size() == 0) FindLevels();
 	hud.ctLevels = levelPick ? cheatLevels.Size() : 0;
 	hud.uWorld = levelStarts;
@@ -1261,8 +1263,18 @@ void IOSGame_Frame()
 			// game (without the cheat: the pistol, as the map starts; with it,
 			// everything is given again)
 			Printf(PRINT_NONOTIFY, "iOS: level %d picked: %s\n", i, cheatLevels[i - 1].map.GetChars());
-			C_DoCommand(FStringf("map %s", cheatLevels[i - 1].map.GetChars()).GetChars());
-			IOSTouch_ShowMessage(FStringf("Going to %s%s", cheatLevels[i - 1].name.GetChars(), cheatOn ? "" : ": a fresh start").GetChars(), 3.0);
+			if (netgame)
+			{
+				// a network game: "changemap", the game's own way for the
+				// host: everyone goes, keeping what they carry
+				C_DoCommand(FStringf("changemap %s", cheatLevels[i - 1].map.GetChars()).GetChars());
+				IOSTouch_ShowMessage(FStringf("Going to %s: everyone (each player taps to go on)", cheatLevels[i - 1].name.GetChars()).GetChars(), 3.0);
+			}
+			else
+			{
+				C_DoCommand(FStringf("map %s", cheatLevels[i - 1].map.GetChars()).GetChars());
+				IOSTouch_ShowMessage(FStringf("Going to %s%s", cheatLevels[i - 1].name.GetChars(), cheatOn ? "" : ": a fresh start").GetChars(), 3.0);
+			}
 		}
 		else
 		{
@@ -1466,6 +1478,15 @@ CCMD(ios_rigactive)
 }
 
 #ifdef IOSTOUCH_RIGHOOKS
+// A tap on a screen the touch controls leave to the game (on the phone a
+// mouse click), e.g. to say "ready" at a network game's intermission:
+// ios_rigclick
+CCMD(ios_rigclick)
+{
+	Printf("rig: click\n");
+	PostKey(KEY_MOUSE1);
+}
+
 // The phone's LAN search, run on the rig (a host on this machine answers on
 // 127.0.0.1): ios_rignetscan
 CCMD(ios_rignetscan)
