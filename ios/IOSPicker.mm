@@ -383,6 +383,7 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 @interface IOSPickerController : UIViewController
 @property (nonatomic, copy) void (^done)(IOSPickEntry* picked); // nil: none (Cancel)
 @property (nonatomic) BOOL switching; // "Switch game", with Cancel
+@property (nonatomic, copy) void (^lan)(void); // "LAN multiplayer" tapped (the start picker's)
 @end
 
 @implementation IOSPickerController
@@ -400,6 +401,13 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 	if (finished || picked == nil) return;
 	finished = YES;
 	if (self.done) self.done(picked);
+}
+
+- (void)lanTapped
+{
+	if (finished) return;
+	finished = YES;
+	if (self.lan) self.lan();
 }
 
 - (void)cancelTapped
@@ -438,6 +446,16 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 		cancel.tintColor = UIColor.whiteColor;
 		[cancel addTarget:self action:@selector(cancelTapped) forControlEvents:UIControlEventTouchUpInside];
 		[topViews addObject:cancel];
+	}
+	else
+	{
+		// Added (LAN games): with others on this Wi-Fi (i_ios.mm asks the rest)
+		UIButton* lanButton = [UIButton buttonWithType:UIButtonTypeSystem];
+		[lanButton setTitle:@"LAN multiplayer" forState:UIControlStateNormal];
+		lanButton.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
+		lanButton.tintColor = [UIColor colorWithRed:1.0 green:0.78 blue:0.35 alpha:1.0];
+		[lanButton addTarget:self action:@selector(lanTapped) forControlEvents:UIControlEventTouchUpInside];
+		[topViews addObject:lanButton];
 	}
 	UIStackView* top = [[UIStackView alloc] initWithArrangedSubviews:topViews];
 	top.alignment = UIStackViewAlignmentLastBaseline;
@@ -739,8 +757,10 @@ int IOSPicker_Run(const char* const* names, int ctNames, int iLast, char* pszFil
 	if (window.hidden) return IOSPICKER_UNAVAILABLE;
 
 	__block IOSPickEntry* picked = nil;
+	__block BOOL lan = NO;
 	menu.done = ^(IOSPickEntry* p) { picked = p; };
-	while (picked == nil)
+	menu.lan = ^{ lan = YES; };
+	while (picked == nil && !lan)
 	{
 		@autoreleasepool
 		{
@@ -749,6 +769,12 @@ int IOSPicker_Run(const char* const* names, int ctNames, int iLast, char* pszFil
 	}
 	window.hidden = YES;
 	window.rootViewController = nil;
+	if (lan)
+	{
+		printf("Game picker: LAN multiplayer\n");
+		fflush(stdout);
+		return IOSPICKER_LAN;
+	}
 
 	[[NSUserDefaults standardUserDefaults] setObject:picked.key forKey:kLastKey];
 	if (pszFiles && ctFilesSize > 0)
@@ -760,4 +786,24 @@ int IOSPicker_Run(const char* const* names, int ctNames, int iLast, char* pszFil
 		picked.addon ? ", with " : "", picked.addon ? [picked.files componentsJoinedByString:@", "].UTF8String : "");
 	fflush(stdout);
 	return picked.iwad;
+}
+
+// LAN multiplayer's "Which game?" (i_ios.mm): the picker's games and add-ons
+const char* IOSPicker_EntryLabel(int i)
+{
+	if (i < 0 || i >= (int)_entries.count) return NULL;
+	return _entries[i].label.UTF8String;
+}
+
+int IOSPicker_EntryPick(int i, char* pszFiles, int ctFilesSize)
+{
+	if (pszFiles && ctFilesSize > 0) pszFiles[0] = 0;
+	if (i < 0 || i >= (int)_entries.count) return -1;
+	IOSPickEntry* e = _entries[i];
+	[[NSUserDefaults standardUserDefaults] setObject:e.key forKey:kLastKey];
+	if (pszFiles && ctFilesSize > 0)
+		strlcpy(pszFiles, [e.files componentsJoinedByString:@"\n"].UTF8String ?: "", ctFilesSize);
+	printf("Game picker: LAN game: %s (game %d)\n", e.label.UTF8String, e.iwad);
+	fflush(stdout);
+	return e.iwad;
 }

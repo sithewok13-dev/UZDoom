@@ -23,6 +23,8 @@
 #include "IOSGame.h"
 #include "IOSCamera.h"
 #include "IOSPicker.h"
+#include "IOSNet.h"
+#include "startupinfo.h"
 
 #include <SDL.h>
 SDL_Window* IOS_GetGameWindow(); // sdlglvideo.cpp: the game's window (OpenGL ES or Vulkan)
@@ -1453,6 +1455,30 @@ CCMD(ios_rigactive)
 }
 
 // The player as the rig's checks need it
+// LAN games: the game's name for the phones' search (i_net.cpp's answer):
+// the picker's (i_ios.mm sets it), else the game's own
+static FString iosNetName;
+void IOSGame_SetNetName(const char* name) { iosNetName = name ? name : ""; }
+const char* IOSGame_NetName()
+{
+	if (iosNetName.IsNotEmpty()) return iosNetName.GetChars();
+	if (GameStartupInfo.Name.IsNotEmpty()) return GameStartupInfo.Name.GetChars();
+	return "DOOM";
+}
+
+#ifdef IOSTOUCH_RIGHOOKS
+// The phone's LAN search, run on the rig (a host on this machine answers on
+// 127.0.0.1): ios_rignetscan
+CCMD(ios_rignetscan)
+{
+	IOSNetHost hosts[IOSNET_MAXHOSTS];
+	const int n = IOSNet_Scan(hosts, IOSNET_MAXHOSTS, 1.0);
+	Printf("rig: netscan %d found\n", n);
+	for (int i = 0; i < n; i++)
+		Printf("rig: netscan %s | %s | %s | %d of %d\n", hosts[i].strAddress, hosts[i].strGame, hosts[i].strMode, hosts[i].ctPresent, hosts[i].ctWanted);
+}
+#endif
+
 CCMD(ios_rigpos)
 {
 	auto p = Player();

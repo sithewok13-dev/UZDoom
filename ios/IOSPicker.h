@@ -12,6 +12,7 @@ extern "C" {
 #endif
 
 #define IOSPICKER_UNAVAILABLE (-2)	// nothing to show (i_ios.mm shows a plain list)
+#define IOSPICKER_LAN (-3)		// "LAN multiplayer" tapped (i_ios.mm asks the rest)
 
 // At start: the picker until a game is picked. names: the games UZDoom
 // found (its names, "DOOM 2: KEX Edition"), iLast: the one played last.
@@ -23,6 +24,11 @@ extern "C" {
 int IOSPicker_Run(const char* const* names, int ctNames, int iLast, char* pszFiles, int ctFilesSize);
 // How many games and add-ons the picker has (GAMES shows with more than one)
 int IOSPicker_GameCount(void);
+// LAN multiplayer's "Which game?": the games and add-ons (as the picker
+// names them, after IOSPicker_Run), and one picked: its game's index, its
+// add-on's files as IOSPicker_Run gives them, kept as "played last"
+const char* IOSPicker_EntryLabel(int i); // NULL past the last
+int IOSPicker_EntryPick(int i, char* pszFiles, int ctFilesSize);
 // "Switch game" over the game being played. Cancel: pfnDone(0). A pick: the
 // settings are written (IOSGame_WriteConfig), the pick kept, a "Tap to
 // start" notification asked for and the app closes; pfnDone isn't called.

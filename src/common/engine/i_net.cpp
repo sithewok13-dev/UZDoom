@@ -56,6 +56,11 @@
 #include "printf.h"
 #include "version.h"
 #include "widgets/netstartwindow.h"
+#ifdef DOOM_IOS
+// Added (iOS): the lobby is a box over the phone's screen (no ZWidget windows)
+#include "../../../ios/IOSLobby.h"
+#define NetStartWindow IOSLobby
+#endif
 #include "filesystem.h"
 
 /* [Petteri] Get more portable: */
@@ -180,6 +185,13 @@ static FConnection	Connected[MAXPLAYERS] = {};
 static uint8_t		TransmitBuffer[MaxTransmitSize] = {};
 static TArray<sockaddr_in> BannedConnections = {};
 static bool bGameStarted = false;
+#ifdef DOOM_TOUCH
+// Added (iOS touch): a host waiting for players answers the phones' LAN
+// search (ios/IOSNet.c: "UZD?", answered "UZD!UZD1|game|mode|present|wanted")
+static bool bHostWaiting = false;
+static int HostPresent = 1;
+const char* IOSGame_NetName(); // (ios/IOSGame.cpp: the game, as the picker names it)
+#endif
 
 CUSTOM_CVAR(String, net_password, "", CVAR_IGNORE)
 {
@@ -435,6 +447,9 @@ static void I_NetClientDisconnected(int client)
 
 static void I_NetUpdatePlayers(int current, int limit)
 {
+#ifdef DOOM_TOUCH
+	HostPresent = current;
+#endif
 	NetStartWindow::NetProgress(current, limit);
 }
 
@@ -569,6 +584,24 @@ static void GetPacket(sockaddr_in* const from = nullptr)
 			msgSize = 0;
 		}
 	}
+#ifdef DOOM_TOUCH
+	// Added (iOS touch): the LAN search: a host waiting for players answers
+	// with the game, the mode and the players here and wanted
+	else if (msgSize >= 4 && !memcmp(TransmitBuffer, "UZD?", 4))
+	{
+		if (bHostWaiting && !bGameStarted)
+		{
+			FBaseCVar* dmVar = FindCVar("deathmatch", nullptr);
+			const int dm = dmVar ? dmVar->GetGenericRep(CVAR_Int).Int : 0;
+			FString answer;
+			answer.Format("UZD!UZD1|%s|%s|%d|%d", IOSGame_NetName(), dm == 0 ? "Co-op" : dm == 2 ? "Deathmatch (items respawn)" : "Deathmatch",
+				HostPresent, MaxClients);
+			sendto(MySocket, answer.GetChars(), (int)answer.Len(), 0, (const sockaddr*)&fromAddress, sizeof(fromAddress));
+		}
+		client = -1;
+		msgSize = 0;
+	}
+#endif
 	else if (msgSize > 0)
 	{
 		const uint8_t* dataStart = &TransmitBuffer[4];
@@ -1043,7 +1076,14 @@ static bool HostGame(int arg)
 	// TODO: This is a really bad solution, but this will be getting removed after -optfile
 	// can properly handle unverified files, so it will do for now.
 	SkipFileVerification = Args->CheckParm(FArg_noverification);
-	if (!I_NetLoop(Host_CheckForConnections, (void*)&connectedPlayers))
+#ifdef DOOM_TOUCH
+	bHostWaiting = true;
+#endif
+	const bool bLobbyDone = I_NetLoop(Host_CheckForConnections, (void*)&connectedPlayers);
+#ifdef DOOM_TOUCH
+	bHostWaiting = false;
+#endif
+	if (!bLobbyDone)
 	{
 		SendAbort();
 		throw CExitEvent(0);

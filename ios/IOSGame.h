@@ -46,3 +46,8 @@ double IOSGame_HudValue(int which, double w, double h);
 // CLASSIC SPLIT / STRIP: the status bar's top as drawn (a fraction of the
 // height), so FIRE and its arc keep above it
 void IOSGame_SetBarTop(double frac);
+
+// LAN games: the game's name the host gives the phones' search (i_net.cpp),
+// set by the picker (i_ios.mm)
+void IOSGame_SetNetName(const char* name);
+const char* IOSGame_NetName();

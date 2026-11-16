@@ -36,6 +36,8 @@
 	<!-- CAMERA's photos go to Photos (add only); without it, to Files > DOOM > Screenshots -->
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>The CAMERA button saves your photos, bursts and selfies of the game to Photos.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>DOOM finds and plays LAN games with other phones on this Wi-Fi.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>

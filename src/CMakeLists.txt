@@ -1531,7 +1531,7 @@ if( DOOM_TOUCH )
 	# Linux rig, its plain C core through the rig's file) and the game side
 	# (and the CAMERA: IOSCamera.cpp, IOSCapture.cpp; its photos are saved
 	# by IOSPhotos.mm on iOS, by rig/IOSPhotosRig.cpp on the rig)
-	set( TOUCH_SOURCES ../ios/IOSGame.cpp ../ios/IOSCamera.cpp ../ios/IOSCapture.cpp )
+	set( TOUCH_SOURCES ../ios/IOSGame.cpp ../ios/IOSCamera.cpp ../ios/IOSCapture.cpp ../ios/IOSNet.c )
 	if( DOOM_IOS )
 		list( APPEND TOUCH_SOURCES ../ios/IOSTouch.m ../ios/IOSPhotos.mm )
 		# (built as Objective-C by the C compiler, clang)

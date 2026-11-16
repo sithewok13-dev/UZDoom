@@ -1,9 +1,13 @@
 /*
 ** i_ios.mm: the iOS pieces the SDL backend expects from the Mac files
-** (from the owner's Raze port, ios/i_ios.mm, without its LAN games)
+** (from the owner's Raze port, ios/i_ios.mm)
 **
 ** - I_PickIWad_Cocoa: the game picker (ios/IOSPicker.mm), a plain list if
 **   that can't be shown
+** - LAN games: the picker's "LAN multiplayer": which game, Host (mode,
+**   players, skill) or Join (the hosts found on the Wi-Fi, or a typed
+**   address), then UZDoom's own -host / -join; and IOSLobby, the box while
+**   waiting for the players (i_net.cpp's lobby on the phone)
 ** - Mac_I_FatalError: an alert with the error before the app ends
 ** - the log in Files (doom-log.txt), MoltenVK, the game window's scene
 **
@@ -23,6 +27,9 @@
 #include "m_argv.h"
 #include "c_cvars.h"
 #include "IOSPicker.h"
+#include "IOSNet.h"
+#include "IOSLobby.h"
+#include "IOSGame.h"
 
 
 
@@ -139,6 +146,265 @@ static UIAlertController* Sheet(NSString* title, NSString* message)
 	return [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleActionSheet];
 }
 
+//---------------------------------------------------------------------------
+//
+// LAN games: the questions after "LAN multiplayer" (from the owner's Raze
+// port); the game itself is UZDoom's own network game (-host / -join)
+//
+//---------------------------------------------------------------------------
+
+// Hosting: mode, players, skill. false: back
+static bool ChooseHost(FArgs* args)
+{
+	const int m = RunAlert(Sheet(@"Host a LAN game", @"Which kind of game?"),
+		@[ @"Co-op", @"Deathmatch", @"Deathmatch (items respawn)", @"Back" ], 3);
+	if (m < 0 || m >= 3) return false;
+
+	NSMutableArray<NSString*>* titles = [NSMutableArray array];
+	for (int n = 2; n <= 8; n++) [titles addObject:[NSString stringWithFormat:@"%d players", n]];
+	[titles addObject:@"Back"];
+	const int p = RunAlert(Sheet(@"Host a LAN game", @"How many players, you too? The game starts when they are all here, or when you tap Start now."), titles, 7);
+	if (p < 0 || p >= 7) return false;
+
+	const int k = RunAlert(Sheet(@"Host a LAN game", @"Skill"),
+		@[ @"I'm too young to die", @"Hey, not too rough", @"Hurt me plenty", @"Ultra-Violence", @"Nightmare!", @"Back" ], 5);
+	if (k < 0 || k >= 5) return false;
+
+	IOSNet_TouchNetwork();	// (iOS asks for the Local Network permission now)
+	args->AppendArg("-host");
+	args->AppendArg(FStringf("%d", p + 2).GetChars());
+	if (m == 1) args->AppendArg("-deathmatch");
+	else if (m == 2) args->AppendArg("-altdeath");
+	args->AppendArg("-skill");
+	args->AppendArg(FStringf("%d", k + 1).GetChars());
+	printf("LAN game: hosting, mode %d, %d players, skill %d\n", m, p + 2, k + 1);
+	return true;
+}
+
+// Joining: the hosts found on the Wi-Fi, or a typed address. false: back
+static bool ChooseJoin(FArgs* args)
+{
+	IOSNet_TouchNetwork();
+	for (;;)
+	{
+		// the search (1.5 s, off the main thread; a box meanwhile)
+		static IOSNetHost hosts[IOSNET_MAXHOSTS];	// (static: the search block fills it)
+		__block int ctHosts = -1;
+		UIAlertController* busy = [UIAlertController alertControllerWithTitle:@"Join a LAN game" message:@"Looking for games on this Wi-Fi…" preferredStyle:UIAlertControllerStyleAlert];
+		const bool shown = Present(busy);
+		dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+			int n = IOSNet_Scan(hosts, IOSNET_MAXHOSTS, 1.5);
+			dispatch_async(dispatch_get_main_queue(), ^{ ctHosts = n; });
+		});
+		while (ctHosts < 0) SpinRunLoop(0.05);
+		if (shown)
+		{
+			[busy dismissViewControllerAnimated:NO completion:nil];
+			WaitGone(busy);
+		}
+		HideOwnWindow();
+
+		NSMutableArray<NSString*>* titles = [NSMutableArray array];
+		for (int i = 0; i < ctHosts; i++)
+		{
+			[titles addObject:[NSString stringWithFormat:@"%s · %s · %d of %d · %s", hosts[i].strGame, hosts[i].strMode,
+				hosts[i].ctPresent, hosts[i].ctWanted, hosts[i].strAddress]];
+		}
+		const int iType = (int)titles.count;
+		[titles addObject:@"Type an address"];
+		[titles addObject:@"Search again"];
+		[titles addObject:@"Back"];
+		NSString* msg = ctHosts > 0 ? @"Tap a game to join it (you need the same game files as the host)."
+			: @"No game found. The host must be waiting for players, on this Wi-Fi.";
+		const int pick = RunAlert(Sheet(@"Join a LAN game", msg), titles, iType + 2);
+		if (pick < 0 || pick == iType + 2) return false;
+		if (pick == iType + 1) continue;
+
+		NSString* address = nil;
+		if (pick < ctHosts) address = [NSString stringWithUTF8String:hosts[pick].strAddress];
+		else
+		{
+			UIAlertController* ask = [UIAlertController alertControllerWithTitle:@"Join a LAN game"
+				message:@"The host's address (it shows on the host's screen while it waits)" preferredStyle:UIAlertControllerStyleAlert];
+			NSString* last = [NSUserDefaults.standardUserDefaults stringForKey:@"DoomLanLastAddress"];
+			[ask addTextFieldWithConfigurationHandler:^(UITextField* field) {
+				field.placeholder = @"192.168.1.20";
+				field.text = last;
+				field.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
+				field.autocorrectionType = UITextAutocorrectionTypeNo;
+			}];
+			const int ok = RunAlert(ask, @[ @"Join", @"Back" ], 1);
+			NSString* typed = [ask.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+			if (ok != 0 || typed.length == 0) continue;
+			address = typed;
+		}
+		[NSUserDefaults.standardUserDefaults setObject:address forKey:@"DoomLanLastAddress"];
+		args->AppendArg("-join");
+		args->AppendArg(address.UTF8String);
+		printf("LAN game: joining %s\n", address.UTF8String);
+		return true;
+	}
+}
+
+// "LAN multiplayer": which game, then host or join. The game's index (its
+// add-on's files in pszFiles), or -1: back to the picker
+static int ChooseLan(FArgs* args, char* pszFiles, int ctFiles)
+{
+	for (;;)
+	{
+		NSMutableArray<NSString*>* games = [NSMutableArray array];
+		int ctGames = 0;
+		for (const char* label; (label = IOSPicker_EntryLabel(ctGames)) != NULL; ctGames++)
+			[games addObject:[NSString stringWithUTF8String:label] ?: @"?"];
+		[games addObject:@"Back"];
+		const int g = RunAlert(Sheet(@"LAN multiplayer", @"Which game? (Everyone needs the same game files.)"), games, ctGames);
+		if (g < 0 || g >= ctGames) return -1;
+		NSString* name = games[g];
+
+		const int c = RunAlert(Sheet(name, @"A game with others on this Wi-Fi"), @[ @"Host a LAN game", @"Join a LAN game", @"Back" ], 2);
+		if (c < 0 || c == 2) continue;
+		if (c == 0 ? !ChooseHost(args) : !ChooseJoin(args)) continue;
+		IOSGame_SetNetName(name.UTF8String);
+		return IOSPicker_EntryPick(g, pszFiles, ctFiles);
+	}
+}
+
+//---------------------------------------------------------------------------
+//
+// LAN games: the box while waiting for the players (IOSLobby.h: i_net.cpp's
+// lobby calls, instead of the ZWidget window)
+//
+//---------------------------------------------------------------------------
+
+namespace IOSLobby
+{
+	static UIAlertController* box = nil;
+	static bool bHost = false, bCancelled = false, bStart = false;
+	static FString message;
+	static TArray<FString> names;	// by client
+	static int present = 1, wanted = 2;
+
+	static NSString* BoxText()
+	{
+		NSMutableString* text = [NSMutableString string];
+		if (bHost)
+		{
+			char mine[64] = "";
+			IOSNet_WifiAddress(mine, sizeof(mine));
+			[text appendFormat:@"%d of %d players here.", present, wanted];
+			[text appendFormat:@"\n\nThis phone's address: %s\n(the others: LAN multiplayer, the same game, Join)", mine[0] ? mine : "no Wi-Fi?"];
+		}
+		else
+		{
+			NSString* what = [NSString stringWithUTF8String:message.GetChars()] ?: @"";
+			if ([what hasPrefix:@"Contacting"]) [text appendString:@"Looking for the host…\n(it must be waiting for players, on this Wi-Fi)"];
+			else [text appendFormat:@"%d of %d players here: waiting for the host to start.", present, wanted];
+		}
+		NSMutableArray<NSString*>* here = [NSMutableArray array];
+		for (unsigned i = 0; i < names.Size(); i++)
+			if (names[i].IsNotEmpty()) [here addObject:[NSString stringWithUTF8String:names[i].GetChars()] ?: @"?"];
+		if (here.count) [text appendFormat:@"\n\n%@", [here componentsJoinedByString:@", "]];
+		return text;
+	}
+
+	static void CloseBox()
+	{
+		if (box)
+		{
+			if (box.presentingViewController) [box dismissViewControllerAnimated:NO completion:nil];
+			WaitGone(box);
+			[box release];
+			box = nil;
+		}
+		HideOwnWindow();
+	}
+
+	// The box shown, its text up to date (again after Start now closed it,
+	// while the game gets going)
+	static void ShowBox()
+	{
+		NSString* text = BoxText();
+		if (box && box.presentingViewController == nil && !box.isBeingPresented)
+		{
+			[box release];
+			box = nil;
+		}
+		if (box == nil)
+		{
+			box = [[UIAlertController alertControllerWithTitle:(bHost ? @"Hosting a LAN game" : @"Joining a LAN game") message:text
+				preferredStyle:UIAlertControllerStyleAlert] retain];
+			if (bHost && !bStart)
+				[box addAction:[UIAlertAction actionWithTitle:@"Start now" style:UIAlertActionStyleDefault handler:^(UIAlertAction*) { bStart = true; }]];
+			if (!bStart)
+				[box addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(UIAlertAction*) { bCancelled = true; }]];
+			Present(box);
+		}
+		else if (![box.message isEqualToString:text]) box.message = text;
+	}
+
+	void NetInit(const char* msg, bool host)
+	{
+		bHost = host;
+		bCancelled = bStart = false;
+		message = msg ? msg : "";
+		names.Clear();
+		present = 1;
+		ShowBox();
+	}
+
+	void NetMessage(const char* msg)
+	{
+		message = msg ? msg : "";
+		if (box) ShowBox();
+	}
+
+	void NetConnect(int client, const char* name, unsigned flags, int status)
+	{
+		if (client < 0) return;
+		if ((unsigned)client >= names.Size()) names.Resize(client + 1);
+		names[client] = name ? name : "?";
+		if (box) ShowBox();
+	}
+
+	void NetUpdate(int client, int status) {}
+
+	void NetDisconnect(int client)
+	{
+		if (client >= 0 && (unsigned)client < names.Size()) names[client] = "";
+		if (box) ShowBox();
+	}
+
+	void NetProgress(int cur, int limit)
+	{
+		present = cur;
+		wanted = limit;
+		if (box) ShowBox();
+	}
+
+	void NetDone() { CloseBox(); }
+	void NetClose() { CloseBox(); }
+	bool ShouldStartNet() { return bStart; }
+	int GetNetKickClient() { return -1; }
+	int GetNetBanClient() { return -1; }
+
+	// The lobby's wait: its callback about 10 times a second until it's done
+	// (true) or Cancel (false)
+	bool NetLoop(bool (*loopCallback)(void*), void* data)
+	{
+		for (;;)
+		{
+			if (loopCallback(data)) return true;
+			if (bCancelled)
+			{
+				CloseBox();
+				return false;
+			}
+			ShowBox();
+			SpinRunLoop(0.1);
+		}
+	}
+}
+
 // The game picker (i_system.cpp's I_PickIWad on iOS): the picker's cards,
 // a plain list if they can't be shown. An add-on's files are loaded with
 // the game (-file). false: none picked (the app ends).
@@ -149,7 +415,15 @@ bool I_PickIWad_IOS(FStartupSelectionInfo& info)
 	TArray<const char*> names;
 	for (int i = 0; i < numwads; i++) names.Push(wads[i].Name.GetChars());
 	static char files[4096];
-	int chosen = IOSPicker_Run(names.Data(), numwads, info.DefaultIWAD, files, sizeof(files));
+	int chosen;
+	for (;;)
+	{
+		chosen = IOSPicker_Run(names.Data(), numwads, info.DefaultIWAD, files, sizeof(files));
+		if (chosen != IOSPICKER_LAN) break;
+		// Added (LAN games): which game, host or join (Back: the picker again)
+		chosen = ChooseLan(info.Args, files, sizeof(files));
+		if (chosen >= 0) break;
+	}
 	if (chosen == IOSPICKER_UNAVAILABLE)
 	{
 		files[0] = 0;

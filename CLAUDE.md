@@ -128,6 +128,18 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   screen (`setblocks` 11 while it's on). Single player only. Lengths are
   map units; the arrangements were measured in the Wolf3D port's tiles
   (`CAM_S`, 60 units).
+- **LAN games** (UZDoom's own netcode, `i_net.cpp`): the picker's "LAN
+  multiplayer" asks which game, then Host (Co-op / Deathmatch / Deathmatch
+  items respawn, 2-8 players, skill: `-host N`, `-deathmatch`/`-altdeath`,
+  `-skill`) or Join (`ios/IOSNet.c` asks the Wi-Fi's /24 with "UZD?" on
+  port 5029; a waiting host answers "UZD!UZD1|game|mode|present|wanted",
+  in `GetPacket`; or a typed address, kept as `DoomLanLastAddress`:
+  `-join IP`). The lobby is `IOSLobby` (in `i_ios.mm`, instead of the
+  ZWidget `NetStartWindow`): a box with the players and the host's
+  address, Start now (host) and Cancel (the app closes, UZDoom's way).
+  Everyone needs the same files. CAMERA, LEVEL, CHEAT and the wheel's
+  pause are single player only. Rig: two instances on 127.0.0.1;
+  `ios_rignetscan`.
 - **Frame rate:** FPS in the tray (held: 60 <-> 120). The game ticks at 35
   Hz and the renderer interpolates. The pace (`ios/IOSPacer.h`, called as
   `IOS_FrameCap` at the top of `D_DoomLoop`, before the frame's time and the
