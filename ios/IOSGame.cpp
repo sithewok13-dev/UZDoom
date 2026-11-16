@@ -1397,6 +1397,17 @@ void IOSGame_HudFrame(double w, double h, double* pFrame)
 	pFrame[3] = f[3] * h;
 }
 
+// LAN games: the game's name for the phones' search (i_net.cpp's answer):
+// the picker's (i_ios.mm sets it), else the game's own
+static FString iosNetName;
+void IOSGame_SetNetName(const char* name) { iosNetName = name ? name : ""; }
+const char* IOSGame_NetName()
+{
+	if (iosNetName.IsNotEmpty()) return iosNetName.GetChars();
+	if (GameStartupInfo.Name.IsNotEmpty()) return GameStartupInfo.Name.GetChars();
+	return "DOOM";
+}
+
 #ifndef DOOM_IOS
 // (the rig has no picker: GAMES shows, as with two games found, unless
 // IOSRIG_GAMES says how many)
@@ -1454,18 +1465,6 @@ CCMD(ios_rigactive)
 	if (!active) IOSTouch_Hide();
 }
 
-// The player as the rig's checks need it
-// LAN games: the game's name for the phones' search (i_net.cpp's answer):
-// the picker's (i_ios.mm sets it), else the game's own
-static FString iosNetName;
-void IOSGame_SetNetName(const char* name) { iosNetName = name ? name : ""; }
-const char* IOSGame_NetName()
-{
-	if (iosNetName.IsNotEmpty()) return iosNetName.GetChars();
-	if (GameStartupInfo.Name.IsNotEmpty()) return GameStartupInfo.Name.GetChars();
-	return "DOOM";
-}
-
 #ifdef IOSTOUCH_RIGHOOKS
 // The phone's LAN search, run on the rig (a host on this machine answers on
 // 127.0.0.1): ios_rignetscan
@@ -1479,6 +1478,7 @@ CCMD(ios_rignetscan)
 }
 #endif
 
+// The player as the rig's checks need it
 CCMD(ios_rigpos)
 {
 	auto p = Player();
