@@ -36,7 +36,7 @@ typedef struct
 
 static const Recipe recipes[IOSCARD_COUNT] =
 {
-	{ "SKULE1", SMOOTH, 10, 1.10f, 2, 99, 1.00f, 0.00f, 200, -22, 8 },	// (its weight left of its middle)
+	{ "SKULE1", SMOOTH, 10, 1.10f, 2, 99, 1.00f, 0.00f, 180, -26, 8 },	// (its weight left of its middle)
 	{ "SKELJ1", SMOOTH, 10, 1.25f, 3, 99, 0.68f, 0.28f, 156, 0, 0 },
 	{ "CYBRA1", SOFT, 10, 0, 0, 0, 1.00f, 0.00f, 165, 0, 0 },
 	{ "HEADA1", SMOOTH, 10, 1.10f, 2, 99, 1.00f, 0.00f, 156, -8, 0 },
