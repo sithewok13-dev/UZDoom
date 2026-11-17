@@ -197,7 +197,7 @@ static UIImage* CardPicture(int fam)
 	{
 		NSDictionary* attr = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
 		NSString* caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
-		NSString* cache = [caches stringByAppendingPathComponent:[NSString stringWithFormat:@"card-%d-%llu-%.0f-v1.png", fam,
+		NSString* cache = [caches stringByAppendingPathComponent:[NSString stringWithFormat:@"card-%d-%llu-%.0f-v2.png", fam,
 			[attr fileSize], [[attr fileModificationDate] timeIntervalSince1970]]];
 		NSData* png = [NSData dataWithContentsOfFile:cache];
 		if (png) image = [UIImage imageWithData:png scale:1];
@@ -238,7 +238,7 @@ static UIImage* CardPicture(int fam)
 {
 	CAGradientLayer* gradient;
 	UIImageView* picture;	// the monster (nil: the emblem)
-	CGFloat pictureHeight, pictureDown;	// IOSCardArt_Layout
+	CGFloat pictureHeight, pictureDown, pictureRight;	// IOSCardArt_Layout
 	CAShapeLayer* ring;
 	NSTimer* holdTimer;
 	CGPoint down;
@@ -280,10 +280,11 @@ static UIImage* CardPicture(int fam)
 		picture.layer.shadowRadius = 8;
 		picture.layer.shadowOffset = CGSizeMake(0, 4);
 		[self addSubview:picture];
-		float h = 0, down = 0;
-		IOSCardArt_Layout(fam, &h, &down);
+		float h = 0, down = 0, right = 0;
+		IOSCardArt_Layout(fam, &h, &down, &right);
 		pictureHeight = h;
 		pictureDown = down;
+		pictureRight = right;
 	}
 
 	// (no picture) the emblem, big and faint behind the name, and small and
@@ -406,7 +407,7 @@ static UIImage* CardPicture(int fam)
 		const CGFloat w = h * picture.image.size.width / MAX(1.0, picture.image.size.height);
 		const CGFloat roomTop = 78, roomBottom = sz.height - 34;
 		const CGFloat cy = (roomTop + roomBottom) / 2 + pictureDown * s;
-		picture.frame = CGRectMake((sz.width - w) / 2, cy - h / 2, w, h);
+		picture.frame = CGRectMake((sz.width - w) / 2 + pictureRight * s, cy - h / 2, w, h);
 	}
 	ring.frame = self.bounds;
 	ring.path = [UIBezierPath bezierPathWithRoundedRect:CGRectInset(self.bounds, 2.5, 2.5) cornerRadius:16].CGPath;

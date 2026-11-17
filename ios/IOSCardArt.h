@@ -2,7 +2,7 @@
 // player's own game file, in cream on dark, made at run time (nothing of the
 // games is in the app). Plain C, so the Linux rig can make them too.
 //
-// The owner's picks: DOOM the Spider Mastermind (SPIDC1F1), DOOM II the
+// The owner's picks: DOOM the Lost Soul, hurt (SKULE1), DOOM II the
 // Revenant firing (SKELJ1, from the knees up, fading out at the bottom),
 // TNT the Cyberdemon (CYBRA1), Plutonia the Cacodemon (HEADA1).
 
@@ -29,8 +29,9 @@ void IOSCardArt_Free(IOSCardPicture* pPic);
 
 // Where the picture goes on its card, the owner's layout, in points for a
 // card 268 pt tall (scale it with the card): its height, and how far it sits
-// below the middle of the picture's room (negative: above)
-void IOSCardArt_Layout(int iCard, float* pfHeight, float* pfDown);
+// below the middle of the picture's room (negative: above) and right of
+// the card's middle
+void IOSCardArt_Layout(int iCard, float* pfHeight, float* pfDown, float* pfRight);
 
 #ifdef __cplusplus
 }

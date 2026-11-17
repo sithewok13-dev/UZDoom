@@ -3,11 +3,11 @@
 //
 //   SOFT (the Cyberdemon): the sprite blown up blocky, blurred, its
 //     brightness a curve into cream on dark.
-//   SMOOTH (the Cacodemon, the Revenant): the colours blown up smoothly
+//   SMOOTH (the Lost Soul, the Cacodemon, the Revenant): the colours blown up smoothly
 //     (Lanczos), the outline from the blocky shape blurred and cut; the
 //     brightness stretched between its 2nd/3rd and 99th percentiles, a
 //     gamma, then sharpened.
-//   SCALE2X (the Spider): Scale2x three times (8x, its edges kept crisp),
+//   SCALE2X (the Spider, no longer on a card): Scale2x three times (8x, its edges kept crisp),
 //     blurred a little, stretched and sharpened as SMOOTH.
 
 #include <stdio.h>
@@ -31,22 +31,23 @@ typedef struct
 	float gamma, lo, hi;	// SMOOTH, SCALE2X: the stretch's percentiles and gamma
 	float keep;		// the top part of the sprite kept (the Revenant: to the knees)
 	float fade;		// the bottom part faded out (of the picture's height)
-	float height, down;	// IOSCardArt_Layout
+	float height, down, right;	// IOSCardArt_Layout
 } Recipe;
 
 static const Recipe recipes[IOSCARD_COUNT] =
 {
-	{ "SPIDC1F1", SCALE2X, 8, 1.10f, 2, 99, 1.00f, 0.00f, 212, 26 },
-	{ "SKELJ1", SMOOTH, 10, 1.25f, 3, 99, 0.68f, 0.28f, 156, 0 },
-	{ "CYBRA1", SOFT, 10, 0, 0, 0, 1.00f, 0.00f, 165, 0 },
-	{ "HEADA1", SMOOTH, 10, 1.10f, 2, 99, 1.00f, 0.00f, 156, -8 },
+	{ "SKULE1", SMOOTH, 10, 1.10f, 2, 99, 1.00f, 0.00f, 200, -22, 8 },	// (its weight left of its middle)
+	{ "SKELJ1", SMOOTH, 10, 1.25f, 3, 99, 0.68f, 0.28f, 156, 0, 0 },
+	{ "CYBRA1", SOFT, 10, 0, 0, 0, 1.00f, 0.00f, 165, 0, 0 },
+	{ "HEADA1", SMOOTH, 10, 1.10f, 2, 99, 1.00f, 0.00f, 156, -8, 0 },
 };
 
-void IOSCardArt_Layout(int iCard, float* pfHeight, float* pfDown)
+void IOSCardArt_Layout(int iCard, float* pfHeight, float* pfDown, float* pfRight)
 {
-	if (iCard < 0 || iCard >= IOSCARD_COUNT) { *pfHeight = 0; *pfDown = 0; return; }
+	if (iCard < 0 || iCard >= IOSCARD_COUNT) { *pfHeight = 0; *pfDown = 0; *pfRight = 0; return; }
 	*pfHeight = recipes[iCard].height;
 	*pfDown = recipes[iCard].down;
+	*pfRight = recipes[iCard].right;
 }
 
 // ---------------------------------------------------------------- the WAD
