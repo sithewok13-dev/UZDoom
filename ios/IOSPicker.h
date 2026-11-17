@@ -22,6 +22,9 @@ extern "C" {
 // The game picked with "Switch game" before the app closed (in the last 10
 // minutes, and still there) is taken without showing anything.
 int IOSPicker_Run(const char* const* names, int ctNames, int iLast, char* pszFiles, int ctFilesSize);
+// The games' files (the same order as names), for the cards' pictures
+// (IOSCardArt.c); before IOSPicker_Run
+void IOSPicker_SetPaths(const char* const* paths, int ctPaths);
 // How many games and add-ons the picker has (GAMES shows with more than one)
 int IOSPicker_GameCount(void);
 // LAN multiplayer's "Which game?": the games and add-ons (as the picker

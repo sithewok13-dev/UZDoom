@@ -22,7 +22,16 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   (NSUserDefaults), the settings written (`IOSGame_WriteConfig`), a "Tap to
   start <game>" notification asked for and the app closes; the next start
   within 10 minutes goes straight to it (without notifications, an alert
-  says to open DOOM again). From the Raze port.
+  says to open DOOM again). From the Raze port. The cards (the owner's
+  design, "B"): near black with the game's colour glowing behind a monster
+  made at run time from the game's own file (`ios/IOSCardArt.c`, plain C,
+  ported from the approved Python mockups; cached in Caches as
+  `card-<n>-<size>-<mtime>-v1.png`): DOOM the Spider Mastermind
+  (SPIDC1F1, Scale2x x3), DOOM II the Revenant firing (SKELJ1, to the
+  knees, faded out), TNT the Cyberdemon (CYBRA1), Plutonia the Cacodemon
+  (HEADA1); cream on dark; sizes and offsets for a 268 pt card
+  (`IOSCardArt_Layout`). No sprite: the old emblem. Plutonia's subtitle
+  is "Experiment".
 - **Touch controls** (`ios/IOSTouch.m`/`.h`: C core + UIKit view, from the
   Raze port's; brought up to the Wolf3D port's, whose overlay came from this
   one; `ios/IOSGame.cpp` is the game side). Modes: GAMEPLAY, CONSOLE (only

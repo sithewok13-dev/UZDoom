@@ -471,6 +471,9 @@ bool I_PickIWad_IOS(FStartupSelectionInfo& info)
 	const int numwads = (int)wads.Size();
 	TArray<const char*> names;
 	for (int i = 0; i < numwads; i++) names.Push(wads[i].Name.GetChars());
+	TArray<const char*> paths;
+	for (int i = 0; i < numwads; i++) paths.Push(wads[i].Path.GetChars());
+	IOSPicker_SetPaths(paths.Data(), numwads);
 	static char files[4096];
 	int chosen;
 	for (;;)

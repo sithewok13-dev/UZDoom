@@ -1,8 +1,9 @@
 // The game picker: see IOSPicker.h. (Objective-C++ with ARC; no engine
 // headers.) From the owner's Raze port (ios/IOSPicker.mm), for DOOM.
 //
-// A card for each main game found, side by side, each in its own colours
-// with an emblem, its name and subtitle, "LAST" on the one played last, and
+// A card for each main game found, side by side, each dark with a glow of
+// its own colour and a monster from the game's own file (IOSCardArt.c: the
+// owner's picks; no file or sprite: an emblem), its name and subtitle, "LAST" on the one played last, and
 // how many add-ons it has. A tap starts the game (or the add-on of it played
 // last); held 0.5 s (a ring runs round the card, then a thump) its add-ons
 // open: the main game and each add-on, to tap. An add-on is its main game
@@ -19,6 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "IOSPicker.h"
+#include "IOSCardArt.h"
 
 // ---------------------------------------------------------------- the games
 
@@ -30,16 +32,16 @@ typedef struct
 	const char* title;	// the card's name
 	const char* subtitle;	// under it
 	const char* symbol;	// an SF Symbol, the card's emblem
-	CGFloat top[3], bottom[3];	// the card's gradient
+	CGFloat glow[3];	// the card's colour, glowing behind its picture
 } Family;
 
 static const Family families[FAM_COUNT] =
 {
-	{ "DOOM", "The Ultimate DOOM", "flame.fill", { 0.78, 0.12, 0.05 }, { 0.22, 0.03, 0.02 } },
-	{ "DOOM II", "Hell on Earth", "globe.europe.africa.fill", { 0.62, 0.32, 0.08 }, { 0.18, 0.07, 0.02 } },
-	{ "TNT", "Evilution", "burst.fill", { 0.18, 0.45, 0.20 }, { 0.04, 0.12, 0.05 } },
-	{ "PLUTONIA", "The Plutonia Experiment", "atom", { 0.42, 0.20, 0.55 }, { 0.10, 0.04, 0.15 } },
-	{ "OTHER", "More games", "square.stack.3d.up.fill", { 0.35, 0.35, 0.38 }, { 0.08, 0.08, 0.09 } },
+	{ "DOOM", "The Ultimate DOOM", "flame.fill", { 0.88, 0.19, 0.12 } },
+	{ "DOOM II", "Hell on Earth", "globe.europe.africa.fill", { 0.85, 0.51, 0.17 } },
+	{ "TNT", "Evilution", "burst.fill", { 0.27, 0.65, 0.31 } },
+	{ "PLUTONIA", "Experiment", "atom", { 0.61, 0.36, 0.77 } },	// ("The Plutonia" left out: the owner's call)
+	{ "OTHER", "More games", "square.stack.3d.up.fill", { 0.45, 0.45, 0.48 } },
 };
 
 // Which card a game UZDoom found goes on, by its name
@@ -169,6 +171,58 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 	return [UIColor colorWithRed:c[0] green:c[1] blue:c[2] alpha:a];
 }
 
+// ---------------------------------------------------------------- the pictures
+
+static NSArray<NSString*>* _paths = nil;	// the games' files, by the games' indexes
+
+void IOSPicker_SetPaths(const char* const* paths, int ctPaths)
+{
+	NSMutableArray<NSString*>* a = [NSMutableArray array];
+	for (int i = 0; i < ctPaths; i++) [a addObject:(paths[i] ? [NSString stringWithUTF8String:paths[i]] : nil) ?: @""];
+	_paths = a;
+}
+
+// A card's picture: its monster from its main game's file (IOSCardArt.c),
+// kept in Caches (made once per file: about a second for the four), or nil
+static UIImage* CardPicture(int fam)
+{
+	static NSMutableDictionary<NSNumber*, id>* made = nil;
+	if (!made) made = [NSMutableDictionary dictionary];
+	if (made[@(fam)]) return made[@(fam)] == NSNull.null ? nil : made[@(fam)];
+	UIImage* image = nil;
+	NSString* path = nil;
+	for (IOSPickEntry* e in GamesOf(fam))
+		if (!e.addon && e.iwad < (int)_paths.count && _paths[e.iwad].length) { path = _paths[e.iwad]; break; }
+	if (fam < IOSCARD_COUNT && path)
+	{
+		NSDictionary* attr = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
+		NSString* caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+		NSString* cache = [caches stringByAppendingPathComponent:[NSString stringWithFormat:@"card-%d-%llu-%.0f-v1.png", fam,
+			[attr fileSize], [[attr fileModificationDate] timeIntervalSince1970]]];
+		NSData* png = [NSData dataWithContentsOfFile:cache];
+		if (png) image = [UIImage imageWithData:png scale:1];
+		if (!image)
+		{
+			IOSCardPicture pic;
+			if (IOSCardArt_Make(path.fileSystemRepresentation, fam, &pic))
+			{
+				CGColorSpaceRef rgb = CGColorSpaceCreateDeviceRGB();
+				CGContextRef ctx = CGBitmapContextCreate(pic.rgba, pic.w, pic.h, 8, pic.w * 4, rgb, kCGImageAlphaPremultipliedLast);
+				CGImageRef cg = ctx ? CGBitmapContextCreateImage(ctx) : NULL;
+				if (cg) image = [UIImage imageWithCGImage:cg];
+				if (cg) CGImageRelease(cg);
+				if (ctx) CGContextRelease(ctx);
+				CGColorSpaceRelease(rgb);
+				IOSCardArt_Free(&pic);
+				[UIImagePNGRepresentation(image) writeToFile:cache atomically:YES];
+			}
+			printf("Game picker: card %d's picture %s (%s)\n", fam, image ? "made" : "not made", path.UTF8String);
+		}
+	}
+	made[@(fam)] = image ?: (id)NSNull.null;
+	return image;
+}
+
 // ---------------------------------------------------------------- a card
 
 #define HOLD_TIME 0.5
@@ -183,6 +237,8 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 @implementation IOSGameCard
 {
 	CAGradientLayer* gradient;
+	UIImageView* picture;	// the monster (nil: the emblem)
+	CGFloat pictureHeight, pictureDown;	// IOSCardArt_Layout
 	CAShapeLayer* ring;
 	NSTimer* holdTimer;
 	CGPoint down;
@@ -203,23 +259,47 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 	self.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.18].CGColor;
 	self.clipsToBounds = YES;
 
+	// near black, the game's colour glowing behind the picture (the owner's
+	// pick, "B")
+	UIColor* dark = [UIColor colorWithRed:0.043 green:0.024 blue:0.024 alpha:1.0];
+	self.backgroundColor = dark;
 	gradient = [CAGradientLayer layer];
-	gradient.colors = @[ (id)RGB(f->top).CGColor, (id)RGB(f->bottom).CGColor ];
-	gradient.startPoint = CGPointMake(0.2, 0.0);
-	gradient.endPoint = CGPointMake(0.8, 1.0);
+	gradient.type = kCAGradientLayerRadial;
+	gradient.colors = @[ (id)RGB(f->glow, 0.40).CGColor, (id)RGB(f->glow, 0.13).CGColor, (id)dark.CGColor ];
+	gradient.locations = @[ @0.0, @0.38, @0.72 ];
 	[self.layer addSublayer:gradient];
 
-	// the emblem, big and faint behind the name, and small and bright above it
+	// the monster, from the game's own file
+	UIImage* art = CardPicture(fam);
+	if (art)
+	{
+		picture = [[UIImageView alloc] initWithImage:art];
+		picture.contentMode = UIViewContentModeScaleToFill;
+		picture.layer.shadowColor = UIColor.blackColor.CGColor;
+		picture.layer.shadowOpacity = 0.6;
+		picture.layer.shadowRadius = 8;
+		picture.layer.shadowOffset = CGSizeMake(0, 4);
+		[self addSubview:picture];
+		float h = 0, down = 0;
+		IOSCardArt_Layout(fam, &h, &down);
+		pictureHeight = h;
+		pictureDown = down;
+	}
+
+	// (no picture) the emblem, big and faint behind the name, and small and
+	// bright above it
 	UIImageSymbolConfiguration* big = [UIImageSymbolConfiguration configurationWithPointSize:120 weight:UIImageSymbolWeightBold];
 	UIImageView* emblem = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@(f->symbol) withConfiguration:big]];
 	emblem.tintColor = [UIColor colorWithWhite:1.0 alpha:0.10];
 	emblem.contentMode = UIViewContentModeScaleAspectFit;
 	emblem.translatesAutoresizingMaskIntoConstraints = NO;
+	emblem.hidden = art != nil;
 	[self addSubview:emblem];
 	UIImageSymbolConfiguration* small = [UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightSemibold];
 	UIImageView* badge = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@(f->symbol) withConfiguration:small]];
 	badge.tintColor = [UIColor colorWithWhite:1.0 alpha:0.9];
 	badge.translatesAutoresizingMaskIntoConstraints = NO;
+	badge.hidden = art != nil;
 	[self addSubview:badge];
 
 	UILabel* name = [[UILabel alloc] init];
@@ -266,7 +346,8 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 		[emblem.heightAnchor constraintEqualToAnchor:emblem.widthAnchor],
 		[text.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:14],
 		[text.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-12],
-		[text.topAnchor constraintEqualToAnchor:badge.bottomAnchor constant:10],
+		art ? [text.topAnchor constraintEqualToAnchor:self.topAnchor constant:12]
+		    : [text.topAnchor constraintEqualToAnchor:badge.bottomAnchor constant:10],
 		[text.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-12],
 	]];
 	if (target && IsLast(target))
@@ -282,7 +363,8 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 		[self addSubview:last];
 		[cons addObjectsFromArray:@[
 			[last.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-10],
-			[last.centerYAnchor constraintEqualToAnchor:badge.centerYAnchor],
+			art ? [last.topAnchor constraintEqualToAnchor:self.topAnchor constant:12]
+			    : [last.centerYAnchor constraintEqualToAnchor:badge.centerYAnchor],
 			[last.heightAnchor constraintEqualToConstant:18],
 		]];
 	}
@@ -305,6 +387,27 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 	[CATransaction begin];
 	[CATransaction setDisableActions:YES];
 	gradient.frame = self.bounds;
+	// (the glow: a circle round 50%, 64%, out to the farthest corner)
+	const CGSize sz = self.bounds.size;
+	if (sz.width > 0 && sz.height > 0)
+	{
+		const CGFloat cx = 0.5 * sz.width, cy = 0.64 * sz.height;
+		const CGFloat r = hypot(MAX(cx, sz.width - cx), MAX(cy, sz.height - cy));
+		gradient.startPoint = CGPointMake(0.5, 0.64);
+		gradient.endPoint = CGPointMake(0.5 + r / sz.width, 0.64 + r / sz.height);
+	}
+	// the picture: the owner's layout for a card 268 pt tall, scaled with it,
+	// centred in the room between the subtitle and the foot (78 pt from the
+	// top, 34 from the bottom), the card cutting what's past its sides
+	if (picture && sz.height > 0)
+	{
+		const CGFloat s = sz.height / 268.0;
+		const CGFloat h = pictureHeight * s;
+		const CGFloat w = h * picture.image.size.width / MAX(1.0, picture.image.size.height);
+		const CGFloat roomTop = 78, roomBottom = sz.height - 34;
+		const CGFloat cy = (roomTop + roomBottom) / 2 + pictureDown * s;
+		picture.frame = CGRectMake((sz.width - w) / 2, cy - h / 2, w, h);
+	}
 	ring.frame = self.bounds;
 	ring.path = [UIBezierPath bezierPathWithRoundedRect:CGRectInset(self.bounds, 2.5, 2.5) cornerRadius:16].CGPath;
 	[CATransaction commit];
@@ -516,7 +619,7 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 	panel.backgroundColor = [UIColor colorWithRed:0.09 green:0.08 blue:0.08 alpha:0.98];
 	panel.layer.cornerRadius = 20;
 	panel.layer.borderWidth = 1.5;
-	panel.layer.borderColor = RGB(f->top, 0.9).CGColor;
+	panel.layer.borderColor = RGB(f->glow, 0.9).CGColor;
 	panel.tag = 7;
 	panel.translatesAutoresizingMaskIntoConstraints = NO;
 	[gamesBack addSubview:panel];
@@ -555,7 +658,7 @@ static UIColor* RGB(const CGFloat c[3], CGFloat a = 1.0)
 		b.titleLabel.adjustsFontSizeToFitWidth = YES;
 		b.titleLabel.minimumScaleFactor = 0.7;
 		b.tintColor = UIColor.whiteColor;
-		b.backgroundColor = e.addon ? [UIColor colorWithWhite:1.0 alpha:0.08] : RGB(f->top, 0.4);
+		b.backgroundColor = e.addon ? [UIColor colorWithWhite:1.0 alpha:0.08] : RGB(f->glow, 0.4);
 		b.layer.cornerRadius = 12;
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
