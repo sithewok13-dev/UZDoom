@@ -193,11 +193,21 @@ static UIImage* CardPicture(int fam)
 	NSString* path = nil;
 	for (IOSPickEntry* e in GamesOf(fam))
 		if (!e.addon && e.iwad < (int)_paths.count && _paths[e.iwad].length) { path = _paths[e.iwad]; break; }
+	// (only a name, "doom2": the file of that name in Documents)
+	if (path && ![path containsString:@"/"])
+	{
+		NSString* base = path.lowercaseString;
+		NSString* found = nil;
+		NSDictionary<NSString*, NSString*>* docs = DocumentFiles();
+		for (NSString* f in docs)
+			if ([f.stringByDeletingPathExtension isEqualToString:base]) { found = docs[f]; break; }
+		path = found;
+	}
 	if (fam < IOSCARD_COUNT && path)
 	{
 		NSDictionary* attr = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
 		NSString* caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
-		NSString* cache = [caches stringByAppendingPathComponent:[NSString stringWithFormat:@"card-%d-%llu-%.0f-v2.png", fam,
+		NSString* cache = [caches stringByAppendingPathComponent:[NSString stringWithFormat:@"card-%d-%llu-%.0f-v3.png", fam,
 			[attr fileSize], [[attr fileModificationDate] timeIntervalSince1970]]];
 		NSData* png = [NSData dataWithContentsOfFile:cache];
 		if (png) image = [UIImage imageWithData:png scale:1];

@@ -77,6 +77,7 @@ struct WadStuff
 {
 	FString Path;
 	FString Name;
+	FString FullPath;	// Added (iOS): the file itself (the picker's card pictures)
 };
 
 struct FStartupSelectionInfo

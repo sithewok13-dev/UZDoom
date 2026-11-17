@@ -26,7 +26,7 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   design, "B"): near black with the game's colour glowing behind a monster
   made at run time from the game's own file (`ios/IOSCardArt.c`, plain C,
   ported from the approved Python mockups; cached in Caches as
-  `card-<n>-<size>-<mtime>-v2.png`): DOOM the Lost Soul, hurt (SKULE1;
+  `card-<n>-<size>-<mtime>-v3.png`; the files from `WadStuff::FullPath`, added: `Path` is only the name): DOOM the Lost Soul, hurt (SKULE1;
   build 39 had the Spider, SPIDC1F1, Scale2x x3, kept in the code), DOOM II the Revenant firing (SKELJ1, to the
   knees, faded out), TNT the Cyberdemon (CYBRA1), Plutonia the Cacodemon
   (HEADA1); cream on dark; sizes and offsets for a 268 pt card

@@ -873,6 +873,7 @@ int FIWadManager::IdentifyVersion (std::vector<FileSys::ResourceName>&wadfiles, 
 			WadStuff stuff;
 			stuff.Name = mIWadInfos[found.mInfoIndex].Name;
 			stuff.Path = ExtractFileBase(found.mFullPath.GetChars());
+			stuff.FullPath = found.mFullPath;
 			wads.Push(stuff);
 		}
 
