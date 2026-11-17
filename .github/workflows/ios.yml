@@ -3,20 +3,48 @@
 # then copy your own .wad files into Files > On My iPhone > DOOM. No game
 # data is in the app.
 #
-# Every run keeps the .ipa as a workflow artifact. Builds of the ios branch
-# also update the public "ios-latest" prerelease (DOOM.ipa, no game data);
-# runs on other ios-* branches (work in progress) publish nothing.
+# Every run keeps the .ipa as a workflow artifact. Where it goes:
+#   - a push to ios, or a manual run of ios with "release" left empty: the
+#     public "ios-latest" prerelease (DOOM.ipa, no game data), as always.
+#   - runs on other ios-* branches (work in progress) publish nothing.
+#   - a manual run of branch ios with "release" set to a tag such as ios-v0.1
+#     (gh workflow run ios.yml --ref ios -f release=ios-v0.1): a release for
+#     that tag, created at the commit being built, with
+#     docs/ios/RELEASE_NOTES.md from that commit as its text and only the
+#     files in RELEASE_IPAS attached, marked as the latest release. A version
+#     with a '-' in it (ios-v0.2-beta1) is a prerelease instead and isn't
+#     marked latest. ios-latest is left alone. The run stops before building
+#     if the tag isn't ios-v<version>, is already on another commit, or the
+#     notes have no "### What's in <tag>" line. Running it again for the same
+#     tag on the same commit updates that release. After publishing, it adds
+#     the release to the AltStore / SideStore source
+#     (packaging/ios/altstore-source.json) on the ios branch; if that part
+#     fails, the release is still out: add it by hand.
 # (Modelled on the owner's Raze port, .github/workflows/ios.yml.)
 name: iOS
 
 on:
   push:
     branches: [ "ios", "ios-*" ]
+    # A push that only changes the AltStore / SideStore source doesn't build
+    # (a release run commits it; the app doesn't include it)
+    paths-ignore:
+      - 'packaging/ios/altstore-source.json'
   workflow_dispatch:
+    inputs:
+      release:
+        description: >-
+          Publish this build as a release with this tag (for example ios-v0.1),
+          created at the commit being built. Leave empty to update ios-latest as usual.
+        required: false
+        default: ''
 
 concurrency:
-  group: ios-${{ github.ref }}
-  cancel-in-progress: true
+  # Pushes and ordinary runs as before (a newer one cancels the older one on
+  # the same branch); release runs for one tag go one at a time and are never
+  # cancelled.
+  group: ${{ inputs.release != '' && format('ios-release-{0}', inputs.release) || format('ios-{0}', github.ref) }}
+  cancel-in-progress: ${{ inputs.release == '' }}
 
 env:
   IOS_MIN: "15.0"
@@ -24,6 +52,12 @@ env:
   OPENAL_TAG: 1.24.3
   VPX_TAG: v1.15.2
   MOLTENVK_TAG: v1.4.2
+  # The tag a manual run was asked to release; empty for pushes and ordinary runs.
+  RELEASE_TAG: ${{ inputs.release }}
+  # The .ipa files a release gets, space-separated
+  RELEASE_IPAS: DOOM.ipa
+  # Release title; the tag's version is added after it (ios-v0.1 -> "... v0.1").
+  RELEASE_TITLE: "DOOM (UZDoom) for iOS"
 
 permissions:
   contents: read
@@ -37,6 +71,37 @@ jobs:
     - uses: actions/checkout@v4
       with:
         persist-credentials: false
+
+    # Before the build: a release needs the ios branch, a usable tag and notes
+    # written for it.
+    - name: Check release tag and notes
+      if: env.RELEASE_TAG != ''
+      run: |
+        set -e
+        if [ "$GITHUB_REF" != "refs/heads/ios" ]; then
+          echo "::error::Releases are made from the ios branch (this run is on $GITHUB_REF)."
+          exit 1
+        fi
+        case "$RELEASE_TAG" in
+          ios-v*) ;;
+          *) echo "::error::Release tag \"$RELEASE_TAG\" should look like ios-v0.1 (ios-v<version>)."; exit 1 ;;
+        esac
+        if ! git check-ref-format "refs/tags/$RELEASE_TAG"; then
+          echo "::error::\"$RELEASE_TAG\" can't be a git tag name."
+          exit 1
+        fi
+        # A tag already there must be on this commit, or the release's .ipa and
+        # its tag's source would differ (publishing doesn't move a tag).
+        REFS=$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}")
+        TAGGED=$(echo "$REFS" | tail -n 1 | cut -f 1)
+        if [ -n "$TAGGED" ] && [ "$TAGGED" != "$GITHUB_SHA" ]; then
+          echo "::error::Tag $RELEASE_TAG is already on commit $TAGGED, not on $GITHUB_SHA (the commit this run builds). Pick a new tag."
+          exit 1
+        fi
+        if ! grep -qxF "### What's in ${RELEASE_TAG}" docs/ios/RELEASE_NOTES.md; then
+          echo "::error file=docs/ios/RELEASE_NOTES.md::No \"### What's in ${RELEASE_TAG}\" heading line. Update the release notes for ${RELEASE_TAG}, commit and push them, then run this again."
+          exit 1
+        fi
 
     - name: Select newest Xcode
       run: |
@@ -166,19 +231,34 @@ jobs:
         path: DOOM.ipa
 
   release:
-    name: Publish to "iOS latest" prerelease
+    name: ${{ inputs.release != '' && format('Publish release {0}', inputs.release) || 'Publish to "iOS latest" prerelease' }}
     needs: build
     if: github.ref == 'refs/heads/ios'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+    # Release runs only: the notes and the AltStore source's script from the
+    # run's commit. Kept first, as checkout empties the folder it checks out
+    # into.
+    - name: Get release notes
+      if: env.RELEASE_TAG != ''
+      uses: actions/checkout@v4
+      with:
+        sparse-checkout: |
+          docs/ios/RELEASE_NOTES.md
+          packaging/ios/update_altstore_source.py
+        sparse-checkout-cone-mode: false
+        persist-credentials: false
+
     - uses: actions/download-artifact@v4
       with:
         name: DOOM-ios
         path: out
 
+    # Pushes and ordinary manual runs; a release run leaves ios-latest alone.
     - name: Publish to "ios-latest" prerelease
+      if: env.RELEASE_TAG == ''
       uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
       with:
         tag_name: ios-latest
@@ -191,3 +271,106 @@ jobs:
           Development build of DOOM (UZDoom) for iPhone and iPad, rebuilt after every push to the `ios` branch (run ${{ github.run_number }}, commit ${{ github.sha }}). It may not have been tried yet.
           DOOM.ipa is unsigned: sideload it, then copy your own .wad files (doom.wad, doom2.wad, tnt.wad, plutonia.wad and any add-ons) into Files > On My iPhone > DOOM. No game data is included.
         files: out/DOOM.ipa
+
+    # Release runs: only the files in RELEASE_IPAS, none with game data, the
+    # title and whether it's a prerelease (a '-' in the version, after the
+    # "ios-").
+    - name: Prepare release
+      id: rel
+      if: env.RELEASE_TAG != ''
+      run: |
+        set -e
+        if ! grep -qxF "### What's in ${RELEASE_TAG}" docs/ios/RELEASE_NOTES.md; then
+          echo "::error file=docs/ios/RELEASE_NOTES.md::No \"### What's in ${RELEASE_TAG}\" heading line."
+          exit 1
+        fi
+        mkdir release
+        for ipa in $RELEASE_IPAS; do
+          if [ ! -f "out/$ipa" ]; then
+            echo "::error::$ipa (in RELEASE_IPAS) wasn't built."
+            exit 1
+          fi
+          # No game data: no .wad (IWADs, add-ons) or .iwad / .ipk3 file in it
+          if unzip -Z1 "out/$ipa" | grep -iE '\.(wad|iwad|ipk3|ipk7)$'; then
+            echo "::error::$ipa has game files in it (above)."
+            exit 1
+          fi
+          cp "out/$ipa" release/
+        done
+        ls -la release
+        VERSION=${RELEASE_TAG#ios-}
+        case "$VERSION" in
+          *-*) PRERELEASE=true; LATEST=false ;;
+          *) PRERELEASE=false; LATEST=true ;;
+        esac
+        echo "Release \"$RELEASE_TITLE $VERSION\", prerelease $PRERELEASE, latest $LATEST"
+        { echo "Build ${{ github.run_number }} · ${{ needs.build.outputs.build_date }}"; echo; cat docs/ios/RELEASE_NOTES.md; } > release-notes.md
+        {
+          echo "name=$RELEASE_TITLE $VERSION"
+          echo "prerelease=$PRERELEASE"
+          echo "latest=$LATEST"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Publish release for the tag
+      if: env.RELEASE_TAG != ''
+      uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+      with:
+        # Creates the tag at the commit this run built (left out, GitHub would
+        # put a new tag on the default branch, trunk)
+        tag_name: ${{ env.RELEASE_TAG }}
+        target_commitish: ${{ github.sha }}
+        name: ${{ steps.rel.outputs.name }}
+        body_path: release-notes.md
+        prerelease: ${{ steps.rel.outputs.prerelease }}
+        make_latest: ${{ steps.rel.outputs.latest }}
+        files: release/*.ipa
+        fail_on_unmatched_files: true
+
+    # The AltStore / SideStore source (packaging/ios/altstore-source.json)
+    # gets the release just published: a new entry with the size, SHA-256,
+    # date, download link and a summary of the notes
+    # (packaging/ios/update_altstore_source.py), committed to the ios branch
+    # (the source's address points there; the default branch is upstream's).
+    # It's a commit by GITHUB_TOKEN (which starts no workflow run), marked
+    # [skip ci], and the file is in paths-ignore, so it publishes nothing.
+    # continue-on-error: if anything here fails, the release (already out)
+    # still counts as a success.
+    - name: Add the release to the AltStore / SideStore source
+      if: env.RELEASE_TAG != ''
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SOURCE_BRANCH: ios
+      run: |
+        set -euo pipefail
+        trap 'echo "::warning::The AltStore / SideStore source was not updated for ${RELEASE_TAG}. The release itself is published; add it to packaging/ios/altstore-source.json by hand."' ERR
+        SRC="$RUNNER_TEMP/altstore-source"
+        rm -rf "$SRC"
+        git clone --quiet --depth 1 --branch "$SOURCE_BRANCH" \
+          "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$SRC"
+        git -C "$SRC" config user.name "github-actions[bot]"
+        git -C "$SRC" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        for attempt in 1 2 3; do
+          # The script and the notes come from the commit just built; the
+          # source file from the newest ios branch
+          python3 -I packaging/ios/update_altstore_source.py \
+            --source "$SRC/packaging/ios/altstore-source.json" \
+            --tag "$RELEASE_TAG" --notes docs/ios/RELEASE_NOTES.md \
+            $(for ipa in $RELEASE_IPAS; do echo "--ipa release/$ipa"; done)
+          if git -C "$SRC" diff --quiet; then
+            echo "The source already has ${RELEASE_TAG}"
+            break
+          fi
+          git -C "$SRC" commit --quiet -am "iOS: add ${RELEASE_TAG} to the AltStore / SideStore source [skip ci]"
+          if git -C "$SRC" push --quiet origin "HEAD:${SOURCE_BRANCH}"; then
+            echo "Added ${RELEASE_TAG} to the source on ${SOURCE_BRANCH}"
+            break
+          fi
+          if [ "$attempt" = 3 ]; then
+            false # gives up (the warning above)
+          fi
+          # Someone pushed in between: start again from the new branch head
+          git -C "$SRC" fetch --quiet --depth 1 origin "$SOURCE_BRANCH"
+          git -C "$SRC" reset --quiet --hard FETCH_HEAD
+        done
+        rm -rf "$SRC"
