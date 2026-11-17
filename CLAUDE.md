@@ -52,7 +52,19 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
 - **The cheat (`sithewok`):** the tray's CHEAT shows the CHEAT button and
   switches the cheat on, or tapped again leaves cheat mode; CHEAT held
   0.5 s (gold ring) = on (gold, the doomguy's god-mode face in colour) /
-  off (grey); a tap does nothing. Its picture is made at run time from the
+  off (grey); a tap opens the **cheat menu** (the Half-Life port's design,
+  its `Documentation/ios-cheat-menu.md`): a panel under CHEAT, a row per
+  switch of DOOM's own cheats (Noclip/idclip, Full map/iddt `am_cheat` 1,
+  and the idbehold power-ups held while on: Light goggles, Invisibility,
+  Berserk, Radiation suit; their time kept above 10 s), name, what it does,
+  ON/OFF (gold); a row tap switches and the menu stays; a touch elsewhere
+  closes it and does nothing more; the game held still while open;
+  independent of the main cheat; all off at a new level / loaded save and
+  when CHEAT is hidden; only what a switch turned on is turned off again;
+  single player (`CheatSwitchesFrame` in `IOSGame.cpp`, rows in
+  `IOSTouch.m`; rig `ios_rig cheatrow <i>`, `ios_rigpos`'s powers line).
+  No slow motion or low gravity: not DOOM's (the owner's rule: nothing
+  shoehorned). Its picture is made at run time from the
   player's own wall `MWALL4_1` (the demon's face in a pentagram: DOOM, DOOM
   II, TNT, Plutonia), the owner's approved recipe ported from Python
   (`CheatWallIcon`/`CheatButton` in `IOSGame.cpp`): eyes lit, the wall's
@@ -64,8 +76,8 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
   the IWAD (the app's Documents) if there is one, else the power-up pickup
   (`misc/p_pkup`). Off is silent. Typing `sithewok` in the console toggles it. While on
   (single player, where the game's cheats work): god mode and `give all`,
-  again at each new level, ammo kept full; the tray's NOCLIP (the game's
-  noclip). Off each launch; the button's showing is remembered.
+  again at each new level, ammo kept full (noclip: the cheat menu; the
+  tray's NOCLIP is gone). Off each launch; the button's showing is remembered.
 - **HUD** (the tray's HUD opens its panel, below; looks: SPLIT, STRIP,
   CLASSIC SPLIT, CLASSIC STRIP, CLASSIC, NONE, default SPLIT; FACE on/off,
   the pills only (the classic bars always have the face); SIZE: the pills
@@ -256,7 +268,7 @@ application/octet-stream`) into a folder outside the repo, for the rig only.
     a ring = quick save / quick load. Sliding off cancels; SAVE wins a tie.
   - MENU: tap = game menu; hold 0.45 s = tray with LOOK, ALWAYS RUN, SENS,
     GYRO, HUD (its panel), FPS, CAMERA, CHEAT, LEVEL (single player, in a level),
-    NOCLIP (the cheat on), GAMES (more than one game), keyboard (the
+    GAMES (more than one game), keyboard (the
     console), and the build stamp under it.
   - LOOK: the drag's look speed, shown on it ("LOOK 1x"); a tap steps 0.5,
     0.75, 1, 1.25, 1.5, 2, 2.5, 3x (round to 0.5x); held 0.45 s (ring)

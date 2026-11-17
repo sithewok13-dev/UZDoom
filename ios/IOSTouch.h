@@ -70,6 +70,7 @@ typedef struct IOSTouchHud {
   int bGames;          /* more than one game found: the tray's GAMES shows */
   int ctLevels;        /* the levels the tray's LEVEL lists (0: none) */
   unsigned int uWorld; /* changes with every level started or loaded */
+  unsigned int uCheatSwitches; /* the cheat menu's switches that are on (bit i: row i; IOSGame.cpp) */
   float afHudFrame[4]; /* (filled by the overlay: IOSTouch_GetHudFrame) */
   float fBarTop;       /* the HUD CLASSIC: the top of DOOM's status bar, a fraction of the screen's
                           height from the top (0: none shows); FIRE and its arc keep above it */
@@ -91,6 +92,8 @@ enum {
   IOSTOUCH_REQ_SAVEMENU  = 1 << 11, /* SAVE tapped: the game's Save Game menu */
   IOSTOUCH_REQ_LOADMENU  = 1 << 12, /* LOAD tapped: the game's Load Game menu */
   IOSTOUCH_REQ_GAMES     = 1 << 13, /* the tray's GAMES: "Switch game" (IOSPicker_PresentSwitch) */
+  IOSTOUCH_REQ_CHEATROW  = 1 << 14, /* a row of the cheat menu tapped: switch IOSTouch_TakeCheatRows() */
+  IOSTOUCH_REQ_CHEATALLOFF = 1 << 15, /* CHEAT hidden: every switch of the cheat menu off */
 };
 
 /* Buttons as the game reads them (IOSTouchInput.ulButtons) */
@@ -218,6 +221,17 @@ int IOSTouch_HoldsGame(void);
 void IOSTouch_CheatTyped(void);
 int IOSTouch_CheatOn(void);
 int IOSTouch_TakeLevelPick(void);
+/* The cheat menu (CHEAT tapped; the Half-Life port's design): DOOM's own
+   switches, one row each; independent of the main cheat. Its rows (names and
+   what they do), whether it's open, a row tapped (the view, the rig), and
+   the rows the game is to switch (bit i: row i) once IOSTOUCH_REQ_CHEATROW comes */
+#define IOSTOUCH_CHEAT_ROWS 6
+const char *IOSTouch_CheatRowName(int iRow);
+const char *IOSTouch_CheatRowInfo(int iRow);
+int IOSTouch_CheatMenuOpen(void);
+void IOSTouch_TapCheatRow(int iRow);
+void IOSTouch_CloseCheatMenu(void);
+unsigned int IOSTouch_TakeCheatRows(void);
 void IOSTouch_CheatLevelFailed(void); /* the level picked couldn't be started */
 /* CHEAT's picture, from the game's own art (RGBA as the wheel's icons): the
    overlay asks once (IOSTouch_WantsCheatIcon); NULL: none, CHEAT says CHEAT */

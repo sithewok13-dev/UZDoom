@@ -213,7 +213,7 @@ enum {
   KIND_ALWAYSRUN,// (MENU's tray) DOOM's Always Run (cl_run) on or off, when the touch lifts on it
   KIND_WHEEL,    // NEXT WPN, PREV WPN: a tap presses its game button once as it lifts; a slide or a hold opens the weapon wheel
   KIND_OPACITY,  // (MENU's tray: HUD) opens or closes its panel under the tray (LOOK, SIZE, FACE, the HUD's and the buttons' opacity), when the touch lifts on it; held IOSTOUCH_MENU_HOLD, all back to the defaults
-  KIND_CHEAT,    // CHEAT: held IOSTOUCH_CHEAT_HOLD, the cheat on or off; a tap does nothing
+  KIND_CHEAT,    // CHEAT: held IOSTOUCH_CHEAT_HOLD, the cheat on or off; a tap opens the cheat menu
   KIND_CHEATSWITCH, // (MENU's tray) shows CHEAT and switches the cheat on, or leaves cheat mode, when the touch lifts on it
   KIND_LEVELPICK,// (MENU's tray, a level, single player) opens the list of levels, when the touch lifts on it
   KIND_NOCLIP,   // (MENU's tray, the cheat on) the game's noclip on or off, when the touch lifts on it
@@ -1245,6 +1245,8 @@ static int _bShowCheat = 0, _bCheatOn = 0;
 static float _fCheatRing = 0.0f;
 static int _ctCheatTicks = 0;
 static int _bLevelListOpen = 0, _iLevelPicked = 0;
+static int _bCheatMenuOpen = 0;	// the cheat menu (CHEAT tapped)
+static unsigned int _uCheatRowsPicked = 0;	// its rows tapped since the game last took them
 static int _ctMaxFpsChanges = 0;
 // CAMERA: whether it shows (the view keeps it in the app's settings), its
 // selfie hold's ring and the tray CAMERA's (held for the options)
@@ -1321,7 +1323,7 @@ static int IOSTouch_LevelPickShows(void)
 // network games)
 static int IOSTouch_CheatTrayShows(void)
 {
-  return _bCheatOn && _hud.bCheatAllowed && _iMode == IOSTOUCH_GAMEPLAY;
+  return 0; // (the tray's NOCLIP: in the cheat menu now, the owner's call)
 }
 
 // Whether a button shows now
@@ -1643,7 +1645,8 @@ static void IOSTouch_CheatNotAllowed(void)
 }
 
 // On: god mode and everything (IOSTOUCH_REQ_CHEATON, which also plays its
-// sound); off: god mode off, silent (what it gave is kept), noclip ends
+// sound); off: god mode off, silent (what it gave is kept). The cheat menu's
+// switches stay as they are (they're separate: the Half-Life port's design)
 static void IOSTouch_SetCheat(int bOn)
 {
   bOn = bOn != 0;
@@ -1651,7 +1654,14 @@ static void IOSTouch_SetCheat(int bOn)
   _bCheatOn = bOn;
   _iRequests |= bOn ? IOSTOUCH_REQ_CHEATON : IOSTOUCH_REQ_CHEATOFF;
   _iRequests &= ~(bOn ? IOSTOUCH_REQ_CHEATOFF : IOSTOUCH_REQ_CHEATON);
-  if (!bOn && _hud.bNoclip) _iRequests |= IOSTOUCH_REQ_NOCLIP;
+}
+
+// CHEAT hidden: nothing may stay on with no button to turn it off
+static void IOSTouch_CheatHidden(void)
+{
+  _bShowCheat = 0;
+  _bCheatMenuOpen = 0;
+  _iRequests |= IOSTOUCH_REQ_CHEATALLOFF;
 }
 
 // CHEAT held: on (gold) or off (grey); CHEAT stays
@@ -1671,7 +1681,7 @@ static void IOSTouch_UseCheatSwitch(void)
 {
   if (_bShowCheat) {
     if (_bCheatOn) IOSTouch_Message("Cheat off");
-    _bShowCheat = 0;
+    IOSTouch_CheatHidden();
     IOSTouch_SetCheat(0);
     return;
   }
@@ -1690,7 +1700,7 @@ void IOSTouch_CheatTyped(void)
 {
   if (_bCheatOn) {
     IOSTouch_SetCheat(0);
-    _bShowCheat = 0;
+    IOSTouch_CheatHidden();
     IOSTouch_Message("Cheat off");
     return;
   }
@@ -1743,6 +1753,56 @@ static void IOSTouch_PickLevel(int iLevel)
   _iRequests |= IOSTOUCH_REQ_LEVEL;
 }
 
+// The cheat menu: CHEAT tapped (the Half-Life port's design: hold = the main
+// cheat, tap = this). DOOM's own switches, one row each (the game switches
+// them, IOSGame.cpp; on: hud.uCheatSwitches), independent of the main
+// cheat, all off at a new level and when CHEAT is hidden. The game holds
+// still while it's open; a row tapped switches and the menu stays; a touch
+// anywhere else closes it and does nothing more. Single player only.
+static const char *const _astrCheatRows[IOSTOUCH_CHEAT_ROWS][2] = {
+  { "Noclip", "Walk through walls (idclip)" },
+  { "Full map", "The automap shows everything (iddt)" },
+  { "Light goggles", "See in the dark (idbehold l)" },
+  { "Invisibility", "Monsters aim worse (idbehold i)" },
+  { "Berserk", "Your punches hit hard (idbehold s)" },
+  { "Radiation suit", "Slime and lava don't hurt (idbehold r)" },
+};
+
+const char *IOSTouch_CheatRowName(int iRow) { return iRow >= 0 && iRow < IOSTOUCH_CHEAT_ROWS ? _astrCheatRows[iRow][0] : ""; }
+const char *IOSTouch_CheatRowInfo(int iRow) { return iRow >= 0 && iRow < IOSTOUCH_CHEAT_ROWS ? _astrCheatRows[iRow][1] : ""; }
+int IOSTouch_CheatMenuOpen(void) { return _bCheatMenuOpen; }
+
+static void IOSTouch_OpenCheatMenu(void)
+{
+  IOSTouch_SetTrayOpen(0);
+  if (!_hud.bCheatAllowed) {
+    IOSTouch_CheatNotAllowed();
+    return;
+  }
+  IOSTouch_DropTouches(NULL);
+  _bCheatMenuOpen = 1;
+}
+
+void IOSTouch_CloseCheatMenu(void)
+{
+  _bCheatMenuOpen = 0;
+}
+
+// A row tapped: the game switches it; the menu stays open
+void IOSTouch_TapCheatRow(int iRow)
+{
+  if (!_bCheatMenuOpen || iRow < 0 || iRow >= IOSTOUCH_CHEAT_ROWS) return;
+  _uCheatRowsPicked ^= 1u << iRow; // (tapped twice before the game saw it: no change)
+  _iRequests |= IOSTOUCH_REQ_CHEATROW;
+}
+
+unsigned int IOSTouch_TakeCheatRows(void)
+{
+  const unsigned int u = _uCheatRowsPicked;
+  _uCheatRowsPicked = 0;
+  return u;
+}
+
 // Whether a touch on this button is the cheat's hold: CHEAT
 static int IOSTouch_IsCheatHold(int button)
 {
@@ -1765,6 +1825,7 @@ static int IOSTouch_WheelIsOpen(void);
 static void IOSTouch_TickCheat(double now, double known)
 {
   if (_bLevelListOpen && (!IOSTouch_LevelPickShows() || IOSTouch_WheelIsOpen())) IOSTouch_CloseLevelList();
+  if (_bCheatMenuOpen && (!_bShowCheat || !_hud.bCheatAllowed || _iMode != IOSTOUCH_GAMEPLAY || IOSTouch_WheelIsOpen())) IOSTouch_CloseCheatMenu();
   const int iTray = (IOSTouch_LevelPickShows() ? IOSTOUCH_TRAY_LEVEL : 0) | (IOSTouch_CheatTrayShows() ? IOSTOUCH_TRAY_NOCLIP : 0)
                     | (_hud.bGames ? IOSTOUCH_TRAY_GAMES : 0);
   if (iTray != _bTrayLevelPlaced) IOSTouch_PlaceTray(iTray);
@@ -1926,7 +1987,7 @@ void IOSTouch_CheatLevelFailed(void)
 // open
 int IOSTouch_HoldsGame(void)
 {
-  return (_bWheelOpen || _bLevelListOpen) && _iMode == IOSTOUCH_GAMEPLAY;
+  return (_bWheelOpen || _bLevelListOpen || _bCheatMenuOpen) && _iMode == IOSTOUCH_GAMEPLAY;
 }
 
 static int IOSTouch_WheelIsOpen(void)
@@ -2880,6 +2941,13 @@ static void IOSTouch_TouchBegan(const void *touch, double x, double y, double W,
     s->button = -1;
     return;
   }
+  // (the cheat menu: the same; its rows are the view's buttons)
+  if (_bCheatMenuOpen) {
+    IOSTouch_CloseCheatMenu();
+    s->role = ROLE_IGNORED;
+    s->button = -1;
+    return;
+  }
   // The open weapon wheel takes every touch: on a slice it is a tap there,
   // anywhere else it closes the wheel as it lifts
   if (_bWheelOpen) {
@@ -3171,6 +3239,9 @@ static void IOSTouch_TouchEnded(const void *touch, double x, double y, int bCanc
       }
       else if (b->kind == KIND_MENU && !s->bFired) {
         _iRequests |= b->ulAction; // a tap: the menu
+      }
+      else if (b->kind == KIND_CHEAT && !s->bCheatDone && _iMode == IOSTOUCH_GAMEPLAY) {
+        IOSTouch_OpenCheatMenu(); // a tap (not held long enough, nor slid): the cheat menu
       }
       else if (b->kind == KIND_CAMERA && !s->bFired && !IOSCamera_IsBusy()) {
         // a tap: a photo; held long enough but lifted before a frame could
@@ -3630,7 +3701,8 @@ static void IOSTouch_ResetTouches(int bReading)
   _bStickRunning = 0;
   _bRunMarker = 0;
   _fStickX = _fStickY = 0.0f;
-  _iRequests &= IOSTOUCH_REQ_CHEATON | IOSTOUCH_REQ_CHEATOFF | IOSTOUCH_REQ_NOCLIP; // (the cheat's own still go)
+  _iRequests &= IOSTOUCH_REQ_CHEATON | IOSTOUCH_REQ_CHEATOFF | IOSTOUCH_REQ_NOCLIP | IOSTOUCH_REQ_CHEATALLOFF; // (the cheat's own still go)
+  _bCheatMenuOpen = 0;
   _fSaveRing = _fLoadRing = _fMenuRing = _fLookRing = 0.0f;
   _fCheatRing = 0.0f;
   _bLevelListOpen = 0; // (the cheat's list of levels closes too)
@@ -4029,6 +4101,13 @@ typedef struct {
   // list; the levels' names and files as the game gives them, and the one
   // being played (1.., 0: none of them)
   IOSTouchLevelPanel *levelPanel;
+  // the cheat menu (CHEAT tapped): a row per switch, under CHEAT; made the
+  // first time it opens. (Direct references to the labels: the Half-Life
+  // port's viewWithTag: crash.)
+  IOSTouchLevelPanel *cheatPanel;
+  UIButton *cheatRowButtons[IOSTOUCH_CHEAT_ROWS];
+  UILabel *cheatRowNames[IOSTOUCH_CHEAT_ROWS], *cheatRowInfos[IOSTOUCH_CHEAT_ROWS], *cheatRowStates[IOSTOUCH_CHEAT_ROWS];
+  unsigned int uCheatRowsShown;
   UILabel *levelTitle;
   UIButton *levelClose;
   UITableView *levelTable;
@@ -4070,6 +4149,7 @@ typedef struct {
 - (void)setRunLit:(int)bLit;
 - (void)refreshCheat;
 - (void)placeLevelPanel;
+- (void)syncCheatMenu;
 @end
 
 @implementation IOSTouchOverlay
@@ -4442,6 +4522,7 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
   trayBack.frame = CGRectMake(_rTrayBack.x0, _rTrayBack.y0, _rTrayBack.x1 - _rTrayBack.x0, _rTrayBack.y1 - _rTrayBack.y0);
   bTrayLevelShown = _bTrayLevelPlaced;
   if (!levelPanel.hidden) [self placeLevelPanel];
+  if (cheatPanel && !cheatPanel.hidden) [self placeCheatPanel];
   fpsLabel.center = CGPointMake(_fFpsX, _fFpsY);
   camMessageLabel.center = CGPointMake(_fCamMessageX, _fCamMessageY);
 
@@ -4828,6 +4909,7 @@ static CAShapeLayer *IOSTouch_MakeHoldRing(CGFloat r)
   [self syncLevels];
   [self refreshMessage];
   [self syncLevels];
+  [self syncCheatMenu];
 }
 
 // ------------------------------------------------------------ weapon wheel
@@ -5324,6 +5406,7 @@ static void IOSTouch_DrawWheelTheme(const IOSTouchWheelTheme *t, CGPoint c, doub
     [[NSUserDefaults standardUserDefaults] setBool:(_bShowCamera ? YES : NO) forKey:IOSTOUCH_CAMERA_DEFAULTS_KEY];
   }
   [self syncLevels]; // (the list of levels closes once LEVEL is gone)
+  [self syncCheatMenu];
   // LOOK held: back to 1x (a thump)
   if (ctLookResetsFelt != _ctLookResets) {
     ctLookResetsFelt = _ctLookResets;
@@ -5568,6 +5651,111 @@ static void IOSTouch_SetSymbol(UILabel *l, NSString *name, CGFloat size, NSStrin
   else if (!_bLevelListOpen && !levelPanel.hidden) {
     levelPanel.hidden = YES;
   }
+}
+
+// ------------------------------------------------------------ the cheat menu
+
+// A row each: the switch's name, what it does, and ON / OFF (gold while on)
+- (void)makeCheatPanel
+{
+  cheatPanel = [[IOSTouchLevelPanel alloc] initWithFrame:CGRectZero];
+  cheatPanel.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.82];
+  cheatPanel.layer.cornerRadius = 16.0;
+  cheatPanel.layer.borderWidth = 1.5;
+  cheatPanel.layer.borderColor = IOSTouch_CheatGold(0.8).CGColor;
+  cheatPanel.clipsToBounds = YES;
+  cheatPanel.hidden = YES;
+  for (int i = 0; i < IOSTOUCH_CHEAT_ROWS; i++) {
+    UIButton *row = [UIButton buttonWithType:UIButtonTypeCustom];
+    row.tag = 200 + i;
+    [row addTarget:self action:@selector(cheatRowTapped:) forControlEvents:UIControlEventTouchUpInside];
+    UILabel *name = [[UILabel alloc] initWithFrame:CGRectZero];
+    name.text = [NSString stringWithUTF8String:IOSTouch_CheatRowName(i)];
+    name.font = IOSTouch_TrayFont(15);
+    name.userInteractionEnabled = NO;
+    UILabel *info = [[UILabel alloc] initWithFrame:CGRectZero];
+    info.text = [NSString stringWithUTF8String:IOSTouch_CheatRowInfo(i)];
+    info.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
+    info.textColor = [UIColor colorWithWhite:1.0 alpha:0.6];
+    info.adjustsFontSizeToFitWidth = YES;
+    info.minimumScaleFactor = 0.75;
+    info.userInteractionEnabled = NO;
+    UILabel *state = [[UILabel alloc] initWithFrame:CGRectZero];
+    state.font = IOSTouch_TrayFont(14);
+    state.textAlignment = NSTextAlignmentRight;
+    state.userInteractionEnabled = NO;
+    [row addSubview:name];
+    [row addSubview:info];
+    [row addSubview:state];
+    [cheatPanel addSubview:row];
+    cheatRowButtons[i] = row;
+    cheatRowNames[i] = name;
+    cheatRowInfos[i] = info;
+    cheatRowStates[i] = state;
+  }
+  [self addSubview:cheatPanel];
+  uCheatRowsShown = ~0u;
+}
+
+// Under CHEAT, inside the safe area (above the bottom if it must)
+- (void)placeCheatPanel
+{
+  const CGRect b = self.bounds;
+  const UIEdgeInsets in = self.safeAreaInsets;
+  const CGFloat w = fmin(300.0, b.size.width - in.left - in.right - 24.0);
+  const CGFloat rowH = 42.0, pad = 6.0;
+  const CGFloat h = pad * 2 + rowH * IOSTOUCH_CHEAT_ROWS;
+  const CGFloat lo = in.left + 12.0, hi = b.size.width - in.right - 12.0 - w;
+  const CGFloat left = fmax(lo, fmin(hi, _aButtons[BTN_CHEAT].x - w * 0.5));
+  const CGFloat top = fmin(_aButtons[BTN_CHEAT].y + _aButtons[BTN_CHEAT].radius + 10.0,
+                           b.size.height - fmax(in.bottom, 8.0) - h - 8.0);
+  cheatPanel.frame = CGRectMake(left, fmax(top, fmax(in.top, 8.0)), w, h);
+  for (int i = 0; i < IOSTOUCH_CHEAT_ROWS; i++) {
+    cheatRowButtons[i].frame = CGRectMake(0, pad + rowH * i, w, rowH);
+    cheatRowNames[i].frame = CGRectMake(16, 4, w - 100, 20);
+    cheatRowInfos[i].frame = CGRectMake(16, 22, w - 100, 16);
+    cheatRowStates[i].frame = CGRectMake(w - 80, 0, 64, rowH);
+  }
+}
+
+// The rows as the game says (hud.uCheatSwitches): gold and ON, or OFF
+- (void)refreshCheatRows
+{
+  const unsigned int u = _hud.uCheatSwitches;
+  if (u == uCheatRowsShown) return;
+  uCheatRowsShown = u;
+  for (int i = 0; i < IOSTOUCH_CHEAT_ROWS; i++) {
+    const int bOn = (u >> i) & 1;
+    cheatRowNames[i].textColor = bOn ? IOSTouch_CheatGold(1.0) : [UIColor colorWithWhite:1.0 alpha:0.92];
+    cheatRowStates[i].text = bOn ? @"ON" : @"OFF";
+    cheatRowStates[i].textColor = bOn ? IOSTouch_CheatGold(1.0) : [UIColor colorWithWhite:1.0 alpha:0.45];
+    cheatRowButtons[i].backgroundColor = bOn ? IOSTouch_CheatGold(0.16) : [UIColor clearColor];
+  }
+}
+
+// The panel as the state says: shown while the menu is open
+- (void)syncCheatMenu
+{
+  if (IOSTouch_CheatMenuOpen()) {
+    if (!cheatPanel) [self makeCheatPanel];
+    if (cheatPanel.hidden) {
+      [self placeCheatPanel];
+      cheatPanel.hidden = NO;
+      [self bringSubviewToFront:cheatPanel];
+      [self refreshStick];
+    }
+    [self refreshCheatRows];
+  }
+  else if (cheatPanel && !cheatPanel.hidden) {
+    cheatPanel.hidden = YES;
+  }
+}
+
+- (void)cheatRowTapped:(UIButton *)sender
+{
+  const int i = (int)sender.tag - 200;
+  IOSTouch_TapCheatRow(i);
+  [[[UISelectionFeedbackGenerator alloc] init] selectionChanged];
 }
 
 - (void)closeLevelsTapped

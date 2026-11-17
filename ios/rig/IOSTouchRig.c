@@ -17,6 +17,7 @@
      up <id> | cancel <id>      it lifts (iOS takes it away)
      tapslice <i>               a tap on the open wheel's slice i
      picklevel <i>              a tap on the open level list's row i (1..)
+     cheatrow <i>               a tap on the open cheat menu's row i (0..)
      gyro <yaw> <pitch>         tilt aiming: degrees (+ left, + up), as a frame's
      state                      what shows, the wheel, the tray, the cheat
 */
@@ -233,6 +234,7 @@ static const char *IOSTouchRig_ButtonName(int b)
 
 static void IOSTouchRig_State(void)
 {
+  printf("rig: state cheatmenu %d switches %u\n", _bCheatMenuOpen, _hud.uCheatSwitches);
   printf("rig: state mode %s reading %d tray %d cheat %d/%d levellist %d wheel %d tapmode %d hot %d holds %d fps %d/%d maxfps %d gyro %d sens %.1f"
          " look %.2f opacity %.2f/%d run %d/%d marker %d camera %d trayplaced %d\n",
          _astrModes[_iMode], _bReading, _bTrayOpen, _bShowCheat, _bCheatOn, _bLevelListOpen, _bWheelOpen, _bWheelTapMode,
@@ -323,6 +325,10 @@ void IOSTouchRig_Command(const char *cmd)
       IOSTouch_TouchEnded(t, x, y, 0, now);
       printf("rig: tapslice %d \"%s\" at %.0f,%.0f, wheel now %d\n", i, m->aSlots[i].strName, x, y, _bWheelOpen);
     }
+  }
+  else if (!strcmp(op, "cheatrow") && argc >= 2) {
+    printf("rig: cheatrow %d (menu open %d)\n", id, _bCheatMenuOpen);
+    IOSTouch_TapCheatRow(id);
   }
   else if (!strcmp(op, "picklevel") && argc >= 2) {
     printf("rig: picklevel %d (list open %d)\n", id, _bLevelListOpen);

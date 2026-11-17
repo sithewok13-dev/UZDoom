@@ -234,7 +234,7 @@ CCMD(sithewok)
 	if (want != (IOSTouch_CheatOn() != 0))
 	{
 		IOSTouch_CheatTyped();
-		Printf("sithewok: %s\n", IOSTouch_CheatOn() ? "on (god mode, everything given, ammo kept full; NOCLIP in MENU's tray)" :
+		Printf("sithewok: %s\n", IOSTouch_CheatOn() ? "on (god mode, everything given, ammo kept full; CHEAT tapped: the cheat menu)" :
 			want ? (CheatRefusal() ? CheatRefusal() : "not now") : "off (god mode off)");
 	}
 }
@@ -1105,6 +1105,85 @@ static bool CanCrouch()
 static unsigned int levelStarts = 0, levelStartsSeen = 0;
 static unsigned int framesDrawn = 0;
 
+//---------------------------------------------------------------------------
+//
+// The cheat menu's switches (CHEAT tapped: IOSTouch.m's rows; the
+// Half-Life port's design): DOOM's own cheats, kept on as switches, each
+// independent of the main cheat: noclip (idclip), the full map (iddt), and
+// the idbehold power-ups held for as long as their switch is on (light
+// goggles, invisibility, berserk, radiation suit). All end at a new level or
+// a loaded save, and when CHEAT is hidden. Only what a switch itself turned
+// on is turned off again (a radiation suit picked up stays). Single player.
+//
+//---------------------------------------------------------------------------
+
+EXTERN_CVAR(Int, am_cheat)
+
+enum { SW_NOCLIP, SW_MAP, SW_LIGHT, SW_INVIS, SW_BERSERK, SW_RAD };
+static const char* const switchPowers[IOSTOUCH_CHEAT_ROWS] = { nullptr, nullptr, "PowerLightAmp", "PowerInvisibility", "PowerStrength", "PowerIronFeet" };
+static unsigned int cheatSwitches = 0;	// on (the rows: gold)
+static unsigned int cheatApplied = 0;	// what the switches turned on in the game
+static unsigned int cheatSwitchesWorld = 0;
+static int cheatSwitchTic[IOSTOUCH_CHEAT_ROWS];	// (a command asked: not again for a few tics)
+
+static AActor* SwitchPower(player_t* p, int i)
+{
+	PClassActor* cls = PClass::FindActor(switchPowers[i]);
+	return cls && p->mo ? p->mo->FindInventory(cls) : nullptr;
+}
+
+static bool SwitchMayAsk(int i)
+{
+	if (gametic - cheatSwitchTic[i] >= 0 && gametic - cheatSwitchTic[i] < 8) return false;
+	cheatSwitchTic[i] = gametic;
+	return true;
+}
+
+static void CheatSwitchesFrame()
+{
+	// all end at a new level (or a loaded save): what they turned on is gone
+	// with it, but for noclip and the map, which the frame turns off below
+	if (cheatSwitchesWorld != levelStarts)
+	{
+		cheatSwitchesWorld = levelStarts;
+		cheatSwitches = 0;
+		cheatApplied &= (1u << SW_NOCLIP) | (1u << SW_MAP);
+	}
+	auto p = Player();
+	if (netgame || gamestate != GS_LEVEL || !p || !p->mo) return;
+	for (int i = 0; i < IOSTOUCH_CHEAT_ROWS; i++)
+	{
+		const unsigned bit = 1u << i;
+		const bool want = (cheatSwitches & bit) != 0 && CheatAllowed() && p->health > 0;
+		if (i == SW_NOCLIP)
+		{
+			const bool has = (p->cheats & (CF_NOCLIP | CF_NOCLIP2)) != 0;
+			if (want && !has && SwitchMayAsk(i)) { C_DoCommand("noclip"); cheatApplied |= bit; }
+			else if (!want && has && (cheatApplied & bit) && SwitchMayAsk(i)) C_DoCommand("noclip");
+			else if (!want && !has) cheatApplied &= ~bit;
+		}
+		else if (i == SW_MAP)
+		{
+			if (want && am_cheat == 0) { am_cheat = 1; cheatApplied |= bit; }
+			else if (!want && (cheatApplied & bit)) { if (am_cheat == 1) am_cheat = 0; cheatApplied &= ~bit; }
+		}
+		else
+		{
+			AActor* item = SwitchPower(p, i);
+			if (want && !item && SwitchMayAsk(i)) { C_DoCommand(FStringf("give %s", switchPowers[i]).GetChars()); cheatApplied |= bit; }
+			else if (want && item && i != SW_BERSERK)
+			{
+				// held for as long as it's on: its time kept well above the
+				// last seconds, when the screen would start to flicker
+				int& tics = item->IntVar(NAME_EffectTics);
+				if (tics > 0 && tics < 10 * TICRATE) tics = 60 * TICRATE;
+			}
+			else if (!want && item && (cheatApplied & bit) && SwitchMayAsk(i)) C_DoCommand(FStringf("take %s", switchPowers[i]).GetChars());
+			else if (!want && !item) cheatApplied &= ~bit;
+		}
+	}
+}
+
 void IOSGame_LevelStarted()
 {
 	levelStarts++;
@@ -1182,6 +1261,7 @@ void IOSGame_Frame()
 	if (levelPick && cheatLevels.Size() == 0) FindLevels();
 	hud.ctLevels = levelPick ? cheatLevels.Size() : 0;
 	hud.uWorld = levelStarts;
+	hud.uCheatSwitches = cheatSwitches;
 	// the HUD CLASSIC: where DOOM's status bar starts (FIRE and its arc keep
 	// above it), while it shows (the screen size kept for it)
 	{
@@ -1254,6 +1334,18 @@ void IOSGame_Frame()
 			SetGod(false);
 		}
 	}
+	// the cheat menu: a row switched; CHEAT hidden: all off
+	if (req & IOSTOUCH_REQ_CHEATROW)
+	{
+		const unsigned int rows = IOSTouch_TakeCheatRows();
+		for (int i = 0; i < IOSTOUCH_CHEAT_ROWS; i++)
+		{
+			if (!((rows >> i) & 1) || !CheatAllowed()) continue;
+			cheatSwitches ^= 1u << i;
+			Printf(PRINT_NONOTIFY, "iOS: cheat menu: %s %s\n", IOSTouch_CheatRowName(i), (cheatSwitches >> i) & 1 ? "on" : "off");
+		}
+	}
+	if (req & IOSTOUCH_REQ_CHEATALLOFF) cheatSwitches = 0;
 	if ((req & IOSTOUCH_REQ_LEVEL) && levelPick)
 	{
 		const int i = IOSTouch_TakeLevelPick();
@@ -1283,6 +1375,7 @@ void IOSGame_Frame()
 		}
 	}
 	CheatFrame();
+	CheatSwitchesFrame();
 	// the CAMERA: a level being played, single player, nothing over it
 	IOSCamera_Frame(mode == IOSTOUCH_GAMEPLAY && !netgame && !switchingGame);
 
@@ -1528,6 +1621,11 @@ CCMD(ios_rigpos)
 		p->health, armor ? armor->IntVar(NAME_Amount) : 0, (int)GodOn(), (int)((p->cheats & (CF_NOCLIP | CF_NOCLIP2)) != 0),
 		p->ReadyWeapon ? p->ReadyWeapon->GetClass()->TypeName.GetChars() : "-", ammo ? ammo->IntVar(NAME_Amount) : -1,
 		weapons, wheelCount, keys, backpack ? 1 : 0, (int)(automapactive != 0), ceil[0], ceil[1], ceil[2]);
+	// (the cheat menu's power-ups held, with their time left)
+	FString pw;
+	for (int i = SW_LIGHT; i <= SW_RAD; i++)
+		if (AActor* item = SwitchPower(p, i)) pw.AppendFormat(" %s:%d", switchPowers[i], item->IntVar(NAME_EffectTics));
+	Printf("rigpos powers%s am_cheat %d switches %u\n", pw.IsEmpty() ? " none" : pw.GetChars(), (int)am_cheat, cheatSwitches);
 }
 
 // The wheel's list as the overlay gets it
