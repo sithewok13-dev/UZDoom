@@ -25,12 +25,12 @@
 
 The first numbered release. What you get:
 
-- **A game picker.** A card each for DOOM, DOOM II, TNT and PLUTONIA, from the files you copied. Hold a card for its add-ons: **SIGIL**, **SIGIL II**, **No Rest for the Living**, **The Master Levels** and **Legacy of Rust**. Each add-on keeps its own saves.
+- **A game picker.** A card each for DOOM, DOOM II, TNT and PLUTONIA, from the files you copied, each with one of its own monsters drawn from your game's files (a Lost Soul, a Revenant, the Cyberdemon, a Cacodemon). Hold a card for its add-ons: **SIGIL**, **SIGIL II**, **No Rest for the Living**, **The Master Levels** and **Legacy of Rust**. Each add-on keeps its own saves.
 - **Touch controls made for DOOM.** A move stick wherever your left thumb lands, drag anywhere else to look, FIRE with USE, JUMP and CROUCH on an arc around it, and MAP for the automap.
 - **A weapon wheel.** Slide off NEXT WPN or PREV WPN and every weapon you carry fans out, drawn with the game's own pickup pictures and ammo counts. The game holds still while it's open.
 - **Your choice of HUD.** Six looks: two new ones with DOOM's own face and red numbers in small dark pills (SPLIT and STRIP), DOOM's classic status bar, two cut-down versions of it, or nothing at all. Three sizes, and a slider for how see-through it is.
 - **A camera.** Take photos, bursts and selfies: the doomguy poses with up to 11 of the nearest monsters, in eight arrangements. Action Freeze stops time so you can fly the camera round a fight, and a cinematic burst takes five shots. Photos go straight to your Photos app. The game is put back exactly as it was afterwards.
-- **The sithewok cheat.** Its button is a demon's face in a pentagram, made from the game's own wall. It turns on god mode with every weapon, keeps your ammo full and gives you NOCLIP. It comes on with the Icon of Sin's spit from DOOM II.
+- **The sithewok cheat.** Its button is a demon's face in a pentagram, made from the game's own wall. It turns on god mode with every weapon and keeps your ammo full. Tap it for a cheat menu of DOOM's own cheats: Noclip, Full map, Light goggles, Invisibility, Berserk and the Radiation suit. It comes on with the Icon of Sin's spit from DOOM II.
 - **LEVEL.** Jump to any level of the game or add-on from a list.
 - **Tilt aiming (GYRO)**, **ALWAYS RUN**, look speed (**LOOK**), and **60 or 120 frames a second** on screens that can show it.
 - **LAN multiplayer**, new and barely tested: co-op or deathmatch for 2 to 8 players on the same Wi-Fi (see *Known limitations*).
@@ -89,7 +89,6 @@ Hold MENU for 0.45 s. A row of buttons opens:
 - **CAMERA** (camera symbol): shows or hides the CAMERA button. Hold it for the camera's options.
 - **CHEAT:** shows the CHEAT button and turns the cheat on (below).
 - **LEVEL:** a list of the game's levels; tap one to go there. Single player, or the host of a network game.
-- **NOCLIP:** walk through walls, while the cheat is on.
 - **GAMES:** when you have more than one game or add-on. Pick another one: the app closes, and the next time you open it (within 10 minutes) it goes straight there. Allow notifications and a "Tap to start" message brings you back.
 - **Keyboard:** opens the game's console, with the iPhone's keyboard.
 - The build number is under the tray (for example "build 37 · Nov 16").
@@ -126,9 +125,10 @@ The CAMERA button (top, in the middle) does it all:
 #### The cheat (sithewok)
 
 - Tap **CHEAT** in the tray: the CHEAT button appears and the cheat comes on, with the Icon of Sin's spit (in DOOM only if `doom2.wad` is there too; otherwise the power-up sound).
-- Hold the CHEAT button 0.5 s to switch it off (grey) or on (gold). A plain tap does nothing, so you can't hit it by mistake.
+- Hold the CHEAT button 0.5 s to switch it off (grey) or on (gold).
+- **Tap the CHEAT button** for the cheat menu, whether the cheat is on or not: **Noclip** (walk through walls), **Full map** (the whole automap), **Light goggles**, **Invisibility**, **Berserk** and **Radiation suit** (each kept on for as long as it's switched on). A tap switches each on (gold) or off, and the menu stays open; touch anywhere else to close it. The game holds still while it's open. These end at a new level, when you load a game, and when you hide CHEAT.
 - Typing `sithewok` in the console also switches it.
-- While it's on (single player): god mode and every weapon, again at each new level, and your ammo kept full. NOCLIP shows in the tray.
+- While it's on (single player): god mode and every weapon, again at each new level, and your ammo kept full.
 - The cheat starts off each time you open the app; whether its button shows is remembered.
 
 #### Menus, leaving the app, and the console

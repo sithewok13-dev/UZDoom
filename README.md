@@ -26,10 +26,10 @@ AltStore here means AltStore Classic; AltStore PAL can't install it.
 
 - **Touch controls made for DOOM:** a move stick wherever your thumb lands, drag anywhere to look, FIRE with USE, JUMP and CROUCH around it.
 - **A weapon wheel:** slide off NEXT WPN or PREV WPN and your whole arsenal fans out, with the game's own pictures and ammo.
-- **A game picker:** DOOM, DOOM II, TNT and PLUTONIA, and the add-ons SIGIL, SIGIL II, No Rest for the Living, The Master Levels and Legacy of Rust.
+- **A game picker:** cards for DOOM, DOOM II, TNT and PLUTONIA, each with a monster from your own game files, and the add-ons SIGIL, SIGIL II, No Rest for the Living, The Master Levels and Legacy of Rust.
 - **Six HUD looks:** DOOM's classic status bar, cut-down versions of it, or small modern pills with the doomguy's face, in three sizes.
 - **A camera:** photos, bursts, and selfies where the doomguy poses with the nearest monsters. **Action Freeze** stops time so you can fly round a fight.
-- **The sithewok cheat:** god mode, every weapon and NOCLIP, and **LEVEL** to jump to any map.
+- **The sithewok cheat:** god mode and every weapon, a cheat menu of DOOM's own cheats (Noclip, Full map, Berserk and more), and **LEVEL** to jump to any map.
 - **Tilt aiming**, **60 or 120 frames a second**, and **Vulkan** graphics on Metal.
 - **LAN co-op and deathmatch** for up to 8 players on the same Wi-Fi (new, see below).
 
