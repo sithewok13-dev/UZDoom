@@ -50,13 +50,14 @@
       ],
       "versions": [
         {
-          "version": "0.1.37",
-          "buildVersion": "37",
-          "marketingVersion": "Build 37 (test build)",
-          "date": "2026-11-16T03:37:37Z",
-          "localizedDescription": "The newest test build, rebuilt after every change (not yet a numbered release). New: LAN co-op and deathmatch, not yet tried between two phones.\n\nRelease page: https://github.com/sithewok13-dev/UZDoom/releases/tag/ios-latest",
-          "downloadURL": "https://github.com/sithewok13-dev/UZDoom/releases/download/ios-latest/DOOM.ipa",
-          "size": 39420809,
+          "version": "0.1.48",
+          "buildVersion": "48",
+          "marketingVersion": "ios-v0.1",
+          "date": "2026-11-18T06:06:30Z",
+          "localizedDescription": "The first numbered release. What you get:\n- A game picker.\n- Touch controls made for DOOM.\n- A weapon wheel.\n- Your choice of HUD.\n- A camera.\n- The sithewok cheat.\n- LEVEL.\n- Tilt aiming (GYRO)\n\nFull notes: https://github.com/sithewok13-dev/UZDoom/releases/tag/ios-v0.1",
+          "downloadURL": "https://github.com/sithewok13-dev/UZDoom/releases/download/ios-v0.1/DOOM.ipa",
+          "size": 39432823,
+          "sha256": "1f8543b7336f85c547f774023abcd025adb1e95ec0c852ab20690b8f0897c6c8",
           "minOSVersion": "15.0"
         }
       ],
@@ -67,11 +68,11 @@
           "NSPhotoLibraryAddUsageDescription": "The CAMERA button saves your photos, bursts and selfies of the game to Photos."
         }
       },
-      "version": "0.1.37",
-      "versionDate": "2026-11-16T03:37:37Z",
-      "versionDescription": "The newest test build, rebuilt after every change (not yet a numbered release). New: LAN co-op and deathmatch, not yet tried between two phones.\n\nRelease page: https://github.com/sithewok13-dev/UZDoom/releases/tag/ios-latest",
-      "downloadURL": "https://github.com/sithewok13-dev/UZDoom/releases/download/ios-latest/DOOM.ipa",
-      "size": 39420809
+      "version": "0.1.48",
+      "versionDate": "2026-11-18T06:06:30Z",
+      "versionDescription": "The first numbered release. What you get:\n- A game picker.\n- Touch controls made for DOOM.\n- A weapon wheel.\n- Your choice of HUD.\n- A camera.\n- The sithewok cheat.\n- LEVEL.\n- Tilt aiming (GYRO)\n\nFull notes: https://github.com/sithewok13-dev/UZDoom/releases/tag/ios-v0.1",
+      "downloadURL": "https://github.com/sithewok13-dev/UZDoom/releases/download/ios-v0.1/DOOM.ipa",
+      "size": 39432823
     }
   ],
   "news": []
